@@ -344,11 +344,17 @@ def test_api_models():
         ok("Module loaded: api_models")
         passed += 1
     except ImportError:
-        # Try loading via importlib
+        # Try loading via importlib (extract all needed classes)
         try:
             mod = load_module("api_models")
             SearchRequest = mod.SearchRequest
             EMRRequest = mod.EMRRequest
+            AssistRequest = mod.AssistRequest
+            FeedbackRequest = mod.FeedbackRequest
+            HealthRecordInput = mod.HealthRecordInput
+            PatientInfo = mod.PatientInfo
+            MedicalRecordFields = mod.MedicalRecordFields
+            HealthResponse = mod.HealthResponse
             ok("Module loaded: api_models (via importlib)")
             passed += 1
         except Exception as e:
