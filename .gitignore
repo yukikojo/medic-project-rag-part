@@ -1,0 +1,55 @@
+# ============================================================
+# Environment & Secrets
+# ============================================================
+.env
+*.env.local
+
+# ============================================================
+# Large Data Files (excluded from version control)
+# ============================================================
+# ChromaDB vector database (~GB level)
+medical_rag_db/
+
+# Raw medical data (OpenKG JSONL)
+rag data/
+
+# Downloaded ML models (stored on D: drive, outside repo anyway)
+# bge-m3, bge-reranker-v2-m3, etc.
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+.env.py
+
+# ============================================================
+# Test Output
+# ============================================================
+test_results/
+*.json.result
+
+# ============================================================
+# IDE & OS
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Project-specific (keep only rag-db/)
+# ============================================================
+# Everything outside rag-db/ is already excluded by only
+# running `git add rag-db/`. This section is a safety net.
+/node_modules/
