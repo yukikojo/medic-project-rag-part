@@ -383,7 +383,7 @@ class RAGPipeline:
         optimizer_base_url: Optional[str] = None,
         optimizer_mode: str = "hybrid",   # "hybrid" | "llm" | "rule" | None (禁用)
         optimizer_cache: bool = True,
-        reranker_enabled: bool = False,   # 是否启用 cross-encoder reranker
+        reranker_enabled: bool = True,   # 是否启用 cross-encoder reranker
         verbose: bool = False,
     ):
         """
