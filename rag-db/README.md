@@ -1,5 +1,15 @@
 # RAG 医疗知识库 — 使用说明与原理
 
+> **基于 8,808 种疾病知识图谱的 RAG 智能导诊系统**。用户以自然语言描述症状，系统通过「查询优化 → 向量粗排 → Cross-Encoder 精排 → LLM 推理」四阶段流水线，推荐最合适的就诊科室并提供可解释的推理依据。支持口语化 / 方言输入，内置 600+ 医学术语映射词典，检索命中后可给出置信度评分与危急症状预警。
+
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![ChromaDB](https://img.shields.io/badge/vector--db-ChromaDB-green.svg)](https://www.trychroma.com/)
+[![Model](https://img.shields.io/badge/embedding-BGE--M3-orange.svg)](https://huggingface.co/BAAI/bge-m3)
+[![Reranker](https://img.shields.io/badge/reranker-BGE--Reranker--v2--m3-red.svg)](https://huggingface.co/BAAI/bge-reranker-v2-m3)
+[![LLM](https://img.shields.io/badge/llm-DeepSeek-purple.svg)](https://www.deepseek.com/)
+
+---
+
 ## 一、什么是 RAG
 
 **RAG（Retrieval-Augmented Generation，检索增强生成）** 是一种将「信息检索」与「大语言模型生成」相结合的技术架构。在这个项目中，RAG 解决的核心问题是：
