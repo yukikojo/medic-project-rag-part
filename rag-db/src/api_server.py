@@ -70,6 +70,7 @@ _START_TIME = time.time()
 _pipeline = None
 _emr_processor = None
 _vector_store = None
+_mysql_kb_manager = None
 
 
 def get_pipeline():
@@ -101,6 +102,15 @@ def get_vector_store():
         from query_engine import VectorStore
         _vector_store = VectorStore()
     return _vector_store
+
+
+def get_mysql_kb_manager():
+    """Get or create MySQLKBManager singleton (lazy, only if MySQL is configured)."""
+    global _mysql_kb_manager
+    if _mysql_kb_manager is None:
+        from mysql_kb_manager import MySQLKBManager
+        _mysql_kb_manager = MySQLKBManager(verbose=False)
+    return _mysql_kb_manager
 
 
 # ============================================================
@@ -264,6 +274,114 @@ def analyze_symptoms(request: dict):
 
     响应:
         {"code": 200, "data": {"symptoms": ["腹痛","腹泻","恶心","食欲不振"], ...}}
+
+
+# ============================================================
+# KG-Enriched 检索 (核心 + 知识图谱富化)
+# ============================================================
+
+@app.post("/api/rag/search/enriched", tags=["Core — 智能导诊"])
+def search_enriched(request: dict):
+    """
+    智能导诊 + 知识图谱富化检索。
+
+    相比 /api/rag/search, 额外为每个疾病补充:
+      - 推荐药品 / 常用药品
+      - 推荐食谱 / 宜吃食物 / 忌吃食物
+      - 建议检查项目
+      - 可能并发症
+      - 治疗方法
+      - KG 汇总 (所有候选疾病的聚合 Top-N 推荐)
+
+    请求体:
+        {
+            "query": "头痛发热咳嗽",
+            "top_k": 5,
+            "max_drugs": 5,
+            "max_foods": 5
+        }
+
+    响应:
+        {
+            "code": 200,
+            "data": {
+                "query": "头痛发热咳嗽",
+                "disease_results": [
+                    {
+                        "disease": "感冒",
+                        "score": 0.85,
+                        "departments": "呼吸内科",
+                        "kg_enrichment": {           ← 新增
+                            "drugs": {"recommand": [...], "common": [...]},
+                            "foods": {"recommand": [...], "do_eat": [...], "no_eat": [...]},
+                            "checks": [...],
+                            "complications": [...],
+                            "cures": [...]
+                        }
+                    },
+                    ...
+                ],
+                "kg_summary": {                      ← 新增: 聚合推荐
+                    "aggregated_recommand_drugs": [...],
+                    "aggregated_recommand_foods": [...],
+                    "aggregated_checks": [...]
+                }
+            }
+        }
+    """
+    query = request.get("query", "").strip()
+    top_k = request.get("top_k", 5)
+    max_drugs = request.get("max_drugs", 5)
+    max_foods = request.get("max_foods", 5)
+
+    if not query:
+        raise HTTPException(status_code=400, detail="query 不能为空")
+
+    store = get_vector_store()
+    start = time.time()
+
+    # RAG retrieval with KG enrichment
+    rag_result = store.comprehensive_search(query, top_k=top_k, enrich_kg=True)
+
+    # Optionally run through LLM for reasoning
+    rec = {}
+    try:
+        pipeline = get_pipeline()
+        llm_result = pipeline.llm.recommend_department(
+            user_query=query,
+            rag_results=rag_result["disease_results"],
+        )
+        rec = llm_result
+    except Exception:
+        rec = {}
+
+    latency = round((time.time() - start) * 1000, 1)
+
+    return {
+        "code": 200,
+        "data": {
+            "query": query,
+            "disease_results": rag_result.get("disease_results", []),
+            "symptom_direct": rag_result.get("symptom_direct", []),
+            "all_departments": rag_result.get("all_departments", []),
+            "primary_recommendation": rag_result.get("primary_recommendation"),
+            "kg_summary": rag_result.get("kg_summary", {}),
+            "reranked": rag_result.get("reranked", False),
+            # LLM
+            "llm_department": rec.get("department"),
+            "llm_disease": rec.get("disease"),
+            "llm_confidence": rec.get("confidence"),
+            "llm_reasoning": rec.get("reasoning"),
+            "llm_suggestion": rec.get("suggestion"),
+            "emergency_warning": rec.get("emergency_warning", False),
+        },
+        "metadata": {
+            "latency_ms": latency,
+            "kg_enriched": True,
+            "model": rec.get("model"),
+            "usage": rec.get("usage"),
+        },
+    }
     """
     query = request.get("query", "").strip()
     if not query:
@@ -480,6 +598,178 @@ def get_department_detail(name: str):
             "score": best["score"],
         },
     }
+
+
+# ============================================================
+# 知识库同步 (MySQL ↔ ChromaDB)
+# ============================================================
+
+@app.post("/api/rag/knowledge/rebuild", tags=["Knowledge — 知识库同步"])
+def rebuild_knowledge_base(request: dict = None):
+    """
+    从 MySQL 全量重建 ChromaDB 三 Collection。
+
+    Java 端调用时机:
+      - 管理员执行"重建知识库"操作
+      - 首次部署时初始化向量索引
+      - 大量数据变更后
+
+    响应:
+        {
+            "code": 200,
+            "data": {"disease_knowledge": 8808, "symptom_dept_direct": 4826, "department_info": 54},
+            "latency_ms": 45000
+        }
+    """
+    try:
+        mgr = get_mysql_kb_manager()
+        start = time.time()
+        counts = mgr.rebuild_all()
+        latency = round((time.time() - start) * 1000, 1)
+
+        return {
+            "code": 200,
+            "message": "知识库全量重建完成",
+            "data": counts,
+            "latency_ms": latency,
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"重建失败: {str(e)}")
+
+
+@app.post("/api/rag/knowledge/sync", tags=["Knowledge — 知识库同步"])
+def sync_knowledge_base(request: dict):
+    """
+    增量同步: Java 端修改 MySQL 后调用，按 ID 更新 ChromaDB。
+
+    请求体:
+        {
+            "updated_ids": [1, 2, 3],     # INSERT/UPDATE 的疾病ID
+            "deleted_ids": [99]            # DELETE 或 status=0 的疾病ID
+        }
+
+    响应:
+        {"code": 200, "data": {"synced": 3, "deleted": 1, "errors": []}}
+    """
+    updated_ids = request.get("updated_ids", []) if request else []
+    deleted_ids = request.get("deleted_ids", []) if request else []
+
+    if not updated_ids and not deleted_ids:
+        raise HTTPException(status_code=400, detail="updated_ids 或 deleted_ids 至少提供一个")
+
+    try:
+        mgr = get_mysql_kb_manager()
+        start = time.time()
+        result = mgr.sync_by_ids(updated_ids=updated_ids, deleted_ids=deleted_ids)
+        latency = round((time.time() - start) * 1000, 1)
+
+        return {
+            "code": 200,
+            "message": f"同步完成: 更新{result['synced']}条, 删除{result['deleted']}条",
+            "data": result,
+            "latency_ms": latency,
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
+
+
+@app.get("/api/rag/knowledge/status", tags=["Knowledge — 知识库同步"])
+def get_knowledge_status():
+    """
+    获取知识库状态: MySQL vs ChromaDB 数据一致性检查。
+
+    Java 端调用时机:
+      - 管理后台"知识库状态"页面
+      - 定时巡检任务
+    """
+    try:
+        mgr = get_mysql_kb_manager()
+
+        mysql_stats = mgr.fetch_stats()
+        chroma_consistency = mgr.check_consistency()
+
+        # Also get ChromaDB stats
+        store = get_vector_store()
+        chroma_stats = store.get_stats()
+
+        return {
+            "code": 200,
+            "data": {
+                "mysql": mysql_stats,
+                "chromadb": {
+                    "collections": chroma_stats.get("collections", {}),
+                    "db_path": chroma_stats.get("db_path", ""),
+                },
+                "consistency": {
+                    "consistent": chroma_consistency.get("consistent", False),
+                    "mysql_count": chroma_consistency.get("mysql_count", 0),
+                    "chromadb_count": chroma_consistency.get("chromadb_count", 0),
+                    "delta": chroma_consistency.get("delta", 0),
+                },
+            },
+        }
+    except Exception as e:
+        traceback.print_exc()
+        # If MySQL is not configured, return ChromaDB-only status
+        try:
+            store = get_vector_store()
+            chroma_stats = store.get_stats()
+            return {
+                "code": 200,
+                "message": "MySQL 未配置，仅返回 ChromaDB 状态",
+                "data": {
+                    "mysql": {"status": "unavailable"},
+                    "chromadb": {
+                        "collections": chroma_stats.get("collections", {}),
+                        "db_path": chroma_stats.get("db_path", ""),
+                    },
+                    "consistency": {"consistent": None, "note": "MySQL not available"},
+                },
+            }
+        except Exception:
+            raise HTTPException(status_code=500, detail=f"状态查询失败: {str(e)}")
+
+
+@app.post("/api/rag/knowledge/import-json", tags=["Knowledge — 知识库同步"])
+def import_json_to_mysql(request: dict = None):
+    """
+    将 medical.json 导入 MySQL rag_disease 表 (首次初始化)。
+
+    请求体 (可选):
+        {"json_path": "D:/medic project/rag data/openkg data/medical.json"}
+
+    不传则使用默认路径。
+    """
+    json_path = request.get("json_path", "") if request else ""
+
+    if not json_path:
+        json_path = os.path.join(
+            _src_dir, "..", "..", "rag data", "openkg data", "medical.json"
+        )
+
+    json_path = os.path.abspath(json_path)
+
+    if not os.path.exists(json_path):
+        raise HTTPException(status_code=400, detail=f"JSON 文件不存在: {json_path}")
+
+    try:
+        mgr = get_mysql_kb_manager()
+        mgr.ensure_table()
+        start = time.time()
+        result = mgr.import_from_json(json_path)
+        latency = round((time.time() - start) * 1000, 1)
+
+        return {
+            "code": 200,
+            "message": f"导入完成: {result['imported']} 条",
+            "data": result,
+            "latency_ms": latency,
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
 
 
 # ============================================================

@@ -290,13 +290,16 @@ class VectorStore:
 
         return output
 
-    def comprehensive_search(self, query: str, top_k: int = 5, use_reranker: bool = True) -> dict:
+    def comprehensive_search(self, query: str, top_k: int = 5, use_reranker: bool = True, enrich_kg: bool = False) -> dict:
         """
         综合检索: 同时查询三个 Collection, 返回完整推理链
 
         当 reranker 启用时, 使用两阶段检索:
           第一阶段: ChromaDB 粗检索 (top_k * 4 候选)
           第二阶段: Cross-encoder 精排 (重打分 + 重排序, 取 top_k)
+
+        当 enrich_kg 启用时, 每个疾病结果会补充知识图谱富化数据:
+          推荐药品、常用药品、推荐食谱、宜吃/忌吃食物、建议检查、并发症、治疗方法
 
         这是对外暴露的主要接口, 供 API 调用。
         Spring Boot → POST /api/rag/search {"query": "头痛发热"}
@@ -305,15 +308,17 @@ class VectorStore:
             query: 用户症状描述
             top_k: 最终返回的疾病结果数 (默认 5)
             use_reranker: 是否使用 reranker 精排 (需 VectorStore 初始化时启用)
+            enrich_kg: 是否启用知识图谱富化 (补充用药/食谱/检查/并发症等)
 
         Returns:
             {
                 "query": "头痛发热",
-                "disease_results": [...],          # 疾病推荐 (含科室)
+                "disease_results": [...],          # 疾病推荐 (含科室, 可能含 kg_enrichment)
                 "symptom_direct": [...],           # 症状直接映射
                 "all_departments": [...],          # 科室汇总
                 "primary_recommendation": {...},   # 主推荐 (综合排序)
                 "reranked": true/false,            # 是否使用了 reranker
+                "kg_summary": {...},               # KG 富化汇总 (仅 enrich_kg=True)
             }
         """
         # Determine fetch size: more candidates if reranker is available
@@ -356,6 +361,20 @@ class VectorStore:
             "primary_recommendation": primary,
             "reranked": reranked,
         }
+
+        # Optional: KG enrichment (drugs, foods, checks, complications, cures)
+        if enrich_kg and disease_results:
+            try:
+                from kg_enricher import get_enricher
+                enricher = get_enricher()
+                enriched = enricher.enrich_comprehensive(
+                    result, max_drugs=5, max_foods=5,
+                )
+                return enriched
+            except Exception:
+                # KG enrichment failed silently — return unenriched results
+                pass
+
         return result
 
     # ================================================================
