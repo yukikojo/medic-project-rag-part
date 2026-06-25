@@ -85,19 +85,23 @@ class KGEnricher:
     之后全部 O(1) 哈希查找。
     """
 
-    def __init__(self, relations_path: Optional[str] = None, verbose: bool = False):
+    def __init__(self, relations_path: Optional[str] = None, use_mysql: bool = True, verbose: bool = False):
         """
         Args:
-            relations_path: relations.json 路径，默认自动定位
+            relations_path: relations.json 路径，默认自动定位 (MySQL不可用时使用)
+            use_mysql: 是否优先从 MySQL rag_disease_kg 表读取 (True=MySQL, False=JSON)
             verbose: 是否打印加载日志
         """
         self.relations_path = relations_path or _RELATIONS_PATH
+        self.use_mysql = use_mysql
         self.verbose = verbose
 
-        # Lazy-loaded index: disease_name → {category: [items]}
-        self._index: Optional[dict] = None
+        # Lazy-loaded sources
+        self._index: Optional[dict] = None        # JSON fallback index
         self._stats: Optional[dict] = None
         self._disease_count: int = 0
+        self._mysql_available: Optional[bool] = None  # None=untested, True/False
+        self._mysql_conn = None
 
     # ================================================================
     # 索引构建 (lazy)
@@ -196,6 +200,91 @@ class KGEnricher:
     # 查询接口
     # ================================================================
 
+    def _get_mysql_conn(self):
+        """Get or create MySQL connection (lazy)."""
+        if self._mysql_conn is None:
+            import pymysql
+            from dotenv import load_dotenv as _ld
+            _ld(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".env"))
+            self._mysql_conn = pymysql.connect(
+                host=os.getenv("MYSQL_HOST", "localhost"),
+                port=int(os.getenv("MYSQL_PORT", "3306")),
+                user=os.getenv("MYSQL_USER", "root"),
+                password=os.getenv("MYSQL_PASSWORD", ""),
+                database=os.getenv("MYSQL_DATABASE", "medical_rag"),
+                charset="utf8mb4",
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=True,
+            )
+        else:
+            try:
+                self._mysql_conn.ping(reconnect=True)
+            except Exception:
+                import pymysql
+                self._mysql_conn = pymysql.connect(
+                    host=os.getenv("MYSQL_HOST", "localhost"),
+                    port=int(os.getenv("MYSQL_PORT", "3306")),
+                    user=os.getenv("MYSQL_USER", "root"),
+                    password=os.getenv("MYSQL_PASSWORD", ""),
+                    database=os.getenv("MYSQL_DATABASE", "medical_rag"),
+                    charset="utf8mb4",
+                    cursorclass=pymysql.cursors.DictCursor,
+                    autocommit=True,
+                )
+        return self._mysql_conn
+
+    def _enrich_from_mysql(self, disease_name: str) -> Optional[dict]:
+        """
+        Query rag_disease_kg table for enrichment data.
+
+        Returns None if MySQL unavailable or no data found.
+        """
+        if self._mysql_available is False:
+            return None
+
+        SQL = """
+            SELECT rel_category, rel_value
+            FROM rag_disease_kg
+            WHERE disease_name = %s AND status = 1
+            ORDER BY rel_category
+        """
+        try:
+            conn = self._get_mysql_conn()
+            with conn.cursor() as cursor:
+                cursor.execute(SQL, (disease_name,))
+                rows = cursor.fetchall()
+
+            if self._mysql_available is None:
+                self._mysql_available = True
+                if self.verbose:
+                    print(f"[KGEnricher] MySQL rag_disease_kg 已就绪")
+
+            if not rows:
+                return None  # No data found — will try fuzzy or fallback
+
+            # Group by category
+            from collections import defaultdict
+            grouped = defaultdict(list)
+            for r in rows:
+                grouped[r["rel_category"]].append(r["rel_value"])
+
+            return {
+                "recommand_drugs":  sorted(grouped.get("recommand_drug", [])),
+                "common_drugs":     sorted(grouped.get("common_drug", [])),
+                "recommand_foods":  sorted(grouped.get("recommand_food", [])),
+                "do_eat_foods":     sorted(grouped.get("do_eat_food", [])),
+                "no_eat_foods":     sorted(grouped.get("no_eat_food", [])),
+                "need_checks":      sorted(grouped.get("need_check", [])),
+                "complications":    sorted(grouped.get("complication", [])),
+                "cure_ways":        sorted(grouped.get("cure_way", [])),
+            }
+
+        except Exception as e:
+            self._mysql_available = False
+            if self.verbose:
+                print(f"[KGEnricher] MySQL 不可用: {e}，回退到 JSON 索引")
+            return None
+
     def enrich_disease(
         self,
         disease_name: str,
@@ -235,15 +324,33 @@ class KGEnricher:
                 "symptoms_from_kg": ["咳嗽", "发热", ...],    # KG 中的症状
             }
         """
-        disease_data = self.index.get(disease_name)
+        # --- Try MySQL first ---
+        disease_data = None
+        source = "none"
+
+        if self.use_mysql:
+            disease_data = self._enrich_from_mysql(disease_name)
+            if disease_data is not None:
+                source = "mysql"
+
+        # --- Fallback: JSON index ---
+        if disease_data is None:
+            disease_data = self.index.get(disease_name)
+            if disease_data is not None:
+                source = "json"
 
         if not disease_data:
             # Fuzzy search — try to find the closest match
-            match = self._fuzzy_match(disease_name)
+            match = None
+            if self.use_mysql and self._mysql_available:
+                match = self._fuzzy_match_mysql(disease_name)
+            if not match:
+                match = self._fuzzy_match_json(disease_name)
             return {
                 "disease": disease_name,
                 "found": False,
                 "suggestion": match,
+                "source": source,
                 "drugs": {},
                 "foods": {},
                 "checks": [],
@@ -270,6 +377,7 @@ class KGEnricher:
         return {
             "disease": disease_name,
             "found": True,
+            "source": source,
             "drugs": drugs,
             "foods": foods,
             "checks": disease_data.get("need_checks", [])[:max_checks],
@@ -387,23 +495,38 @@ class KGEnricher:
     # 模糊匹配
     # ================================================================
 
-    def _fuzzy_match(self, disease_name: str) -> Optional[str]:
-        """
-        当精确匹配失败时，尝试查找最相似的疾病名。
-
-        策略:
-          1. 子串包含匹配 ("急性胃肠炎" in index keys)
-          2. 前缀匹配
-          3. 编辑距离 (TODO: 太重, 先跳过)
-        """
+    def _fuzzy_match_json(self, disease_name: str) -> Optional[str]:
+        """JSON index 模糊匹配 (fallback)."""
         if not self._index:
             return None
-
-        # Substring match
         for key in self._index:
             if disease_name in key or key in disease_name:
                 return key
+        return None
 
+    def _fuzzy_match_mysql(self, disease_name: str) -> Optional[str]:
+        """MySQL 模糊匹配: LIKE 子串查询."""
+        try:
+            conn = self._get_mysql_conn()
+            with conn.cursor() as cursor:
+                # Exact substring match
+                cursor.execute(
+                    "SELECT disease_name FROM rag_disease_kg WHERE disease_name LIKE %s AND status = 1 LIMIT 1",
+                    (f"%{disease_name}%",)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return row["disease_name"]
+                # Reverse: disease_name contains query
+                cursor.execute(
+                    "SELECT disease_name FROM rag_disease_kg WHERE %s LIKE CONCAT('%%', disease_name, '%%') AND status = 1 LIMIT 1",
+                    (disease_name,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return row["disease_name"]
+        except Exception:
+            pass
         return None
 
     # ================================================================
