@@ -773,6 +773,91 @@ def import_json_to_mysql(request: dict = None):
 
 
 # ============================================================
+# AI 模型配置管理 (MySQL ai_model_config 表)
+# ============================================================
+
+@app.post("/api/rag/config/refresh", tags=["Config — AI配置管理"])
+def refresh_ai_config():
+    """
+    强制刷新 AI 配置缓存 (从 MySQL ai_model_config 表重新加载)。
+
+    Java 调用时机:
+      - 管理员修改 AI 配置后立即调用
+      - 系统启动时初始化
+    """
+    try:
+        from ai_config_loader import get_loader
+        loader = get_loader()
+        result = loader.refresh()
+        return {
+            "code": 200,
+            "message": "配置缓存已刷新",
+            "data": result,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"刷新失败: {str(e)}")
+
+
+@app.get("/api/rag/config/list", tags=["Config — AI配置管理"])
+def list_ai_configs():
+    """
+    列出全部 AI 场景配置 (Prompt 截断显示, API Key 脱敏)。
+    """
+    try:
+        from ai_config_loader import get_loader
+        loader = get_loader()
+        configs = loader.list_all()
+        return {
+            "code": 200,
+            "data": {
+                "scenes": configs,
+                "source": "mysql" if loader._mysql_available else "defaults",
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/rag/config/{scene}", tags=["Config — AI配置管理"])
+def get_ai_config(scene: str):
+    """
+    获取单个场景的完整 AI 配置 (含完整 Prompt)。
+    """
+    try:
+        from ai_config_loader import get_config
+        cfg = get_config(scene)
+        if not cfg:
+            raise HTTPException(status_code=404, detail=f"场景 '{scene}' 不存在")
+        return {"code": 200, "data": cfg}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/rag/config/seed", tags=["Config — AI配置管理"])
+def seed_ai_configs():
+    """
+    将默认硬编码配置写入 MySQL ai_model_config 表 (首次初始化/恢复默认)。
+
+    INSERT ... ON DUPLICATE KEY UPDATE — 幂等操作。
+    """
+    try:
+        from ai_config_loader import get_loader
+        loader = get_loader()
+        result = loader.seed_from_defaults()
+        if result.get("status") == "ok":
+            loader.refresh()
+            return {"code": 200, "message": f"已写入 {result['seeded']} 个场景配置", "data": result}
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "unknown"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
 # 用户反馈
 # ============================================================
 

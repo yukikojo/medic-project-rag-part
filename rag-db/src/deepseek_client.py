@@ -135,8 +135,8 @@ class DeepSeekClient:
         user_query: str,
         rag_results: list[dict],
         model: Optional[str] = None,
-        temperature: float = 0.3,
-        max_tokens: int = 600,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> dict:
         """
         基于 RAG 检索结果, 用 DeepSeek 生成科室推荐 + 推理链
@@ -163,18 +163,15 @@ class DeepSeekClient:
                 "raw_response": "..."  # 原始 LLM 输出
             }
         """
-        # 构造检索上下文
-        context_parts = []
-        for i, r in enumerate(rag_results[:5]):
-            context_parts.append(
-                f"{i+1}. {r['disease']} (相似度: {r['score']:.1%})\n"
-                f"   症状: {r['symptoms']}\n"
-                f"   科室: {r['departments']}\n"
-                f"   分类: {r['category']}"
-            )
-        context = "\n".join(context_parts)
-
-        system_prompt = """你是一个智能医疗导诊助手。根据用户的症状描述和医学知识库的检索结果，推荐最合适的就诊科室。
+        # 加载配置 (MySQL 优先, 硬编码默认兜底)
+        try:
+            from ai_config_loader import get_prompt, get_params
+            system_prompt = get_prompt("triage")
+            cfg = get_params("triage")
+            _temp = temperature if temperature is not None else cfg["temperature"]
+            _max_tok = max_tokens if max_tokens is not None else cfg["max_tokens"]
+        except Exception:
+            system_prompt = """你是一个智能医疗导诊助手。根据用户的症状描述和医学知识库的检索结果，推荐最合适的就诊科室。
 
 ## 输出要求
 请严格按照以下 JSON 格式输出 (不要输出其他内容):
@@ -192,13 +189,22 @@ class DeepSeekClient:
 ## 注意事项
 1. department 必须是知识库中出现的科室名，不要捏造科室
 2. 如果多个检索结果指向同一科室，提高该科室的推荐优先级
-3. confidence 为 0-100 的整数, 表示推荐置信度百分比:
-   - ≥80: 症状与知识库高度匹配, 推荐非常可靠
-   - 60-79: 症状基本匹配, 有一定不确定性
-   - 40-59: 症状部分匹配, 建议补充更多信息
-   - <40: 匹配度较低, 建议用户详细描述症状
-4. 如果症状包含"剧烈胸痛"、"大出血"、"意识不清"等危急描述，emergency_warning 应为 true，并在 suggestion 中建议立即就医
+3. confidence 为 0-100 的整数
+4. 危急描述触发 emergency_warning
 5. 推理依据要用通俗语言解释，让患者能理解为什么推荐这个科室"""
+            _temp = temperature if temperature is not None else 0.3
+            _max_tok = max_tokens if max_tokens is not None else 600
+
+        # 构造检索上下文
+        context_parts = []
+        for i, r in enumerate(rag_results[:5]):
+            context_parts.append(
+                f"{i+1}. {r['disease']} (相似度: {r['score']:.1%})\n"
+                f"   症状: {r['symptoms']}\n"
+                f"   科室: {r['departments']}\n"
+                f"   分类: {r['category']}"
+            )
+        context = "\n".join(context_parts)
 
         user_message = f"""## 患者症状描述
 {user_query}
@@ -215,8 +221,8 @@ class DeepSeekClient:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                temperature=temperature,
-                max_tokens=max_tokens,
+                temperature=_temp,
+                max_tokens=_max_tok,
                 response_format={"type": "json_object"},
             )
 

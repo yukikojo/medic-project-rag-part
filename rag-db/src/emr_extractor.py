@@ -421,16 +421,28 @@ class EMRProcessor:
             print(f"  症状: {symptom_text[:60]}...")
             print(f"  年龄: {age}, 性别: {gender}")
 
+        # Load config (MySQL优先, 硬编码默认兜底)
+        try:
+            from ai_config_loader import get_prompt, get_params
+            _sys_prompt = get_prompt("emr_extract")
+            _cfg = get_params("emr_extract")
+            _temp = _cfg["temperature"]
+            _max_tok = _cfg["max_tokens"]
+        except Exception:
+            _sys_prompt = EMR_SYSTEM_PROMPT
+            _temp = self.temperature
+            _max_tok = self.max_tokens
+
         # Call LLM
         try:
             response = self.llm_client.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": EMR_SYSTEM_PROMPT},
+                    {"role": "system", "content": _sys_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
+                temperature=_temp,
+                max_tokens=_max_tok,
                 response_format={"type": "json_object"},
             )
 
@@ -547,15 +559,27 @@ class EMRProcessor:
         if self.verbose:
             print(f"[EMRProcessor] 正在生成辅助问诊提示...")
 
+        # Load config (MySQL优先, 硬编码默认兜底)
+        try:
+            from ai_config_loader import get_prompt, get_params
+            _sys_prompt = get_prompt("assist")
+            _cfg = get_params("assist")
+            _temp = _cfg["temperature"]
+            _max_tok = _cfg["max_tokens"]
+        except Exception:
+            _sys_prompt = ASSIST_SYSTEM_PROMPT
+            _temp = 0.3
+            _max_tok = 1000
+
         try:
             response = self.llm_client.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": ASSIST_SYSTEM_PROMPT},
+                    {"role": "system", "content": _sys_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                temperature=0.3,
-                max_tokens=1000,
+                temperature=_temp,
+                max_tokens=_max_tok,
                 response_format={"type": "json_object"},
             )
 
