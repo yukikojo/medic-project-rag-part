@@ -773,6 +773,70 @@ def import_json_to_mysql(request: dict = None):
 
 
 # ============================================================
+# 健康档案 AI 摘要
+# ============================================================
+
+@app.post("/api/rag/health-summary", tags=["Health — 健康档案"])
+def generate_health_summary(request: dict):
+    """
+    为患者健康档案生成 AI 专业摘要 (面向医生端)。
+
+    Java 调用时机:
+      - 患者新增/修改健康档案后
+      - 医生查看患者档案时 (可选实时生成)
+
+    请求体:
+        {
+            "member_name": "张三",
+            "gender": 1,
+            "birth_date": "1960-03-15",
+            "blood_type": "A",
+            "allergy": "青霉素过敏",
+            "past_illness": "高血压5年, 2型糖尿病",
+            "surgery_history": "阑尾切除术 2019",
+            "medication": "硝苯地平 30mg qd",
+            "is_self": 1,
+            "record_id": 1                    // optional
+        }
+
+    响应:
+        {
+            "code": 200,
+            "data": {
+                "ai_summary": "患者张三，男，65岁，A型血。既往高血压病史5年...",
+                "rag_context_used": true
+            },
+            "metadata": {"model": "qwen-flash", "latency_ms": 2500}
+        }
+    """
+    try:
+        from health_summary import HealthSummaryGenerator
+        generator = HealthSummaryGenerator(verbose=False)
+
+        result = generator.generate(request)
+
+        if result.get("error"):
+            return {
+                "code": 500,
+                "message": result["error"],
+                "data": {"ai_summary": None},
+            }
+
+        return {
+            "code": 200,
+            "data": {
+                "ai_summary": result["ai_summary"],
+                "rag_context_used": result.get("rag_context_used", False),
+            },
+            "metadata": result.get("metadata", {}),
+        }
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"摘要生成失败: {str(e)}")
+
+
+# ============================================================
 # AI 模型配置管理 (MySQL ai_model_config 表)
 # ============================================================
 
