@@ -837,6 +837,102 @@ def generate_health_summary(request: dict):
 
 
 # ============================================================
+# 个性化生活建议
+# ============================================================
+
+@app.post("/api/rag/health-suggestion", tags=["Health — 健康档案"])
+def generate_health_suggestion(request: dict):
+    """
+    为患者生成个性化生活建议 (面向患者端)。
+
+    Java 调用时机:
+      - 患者完成问诊后
+      - 患者查看健康档案时 (可选实时生成)
+      - 医生更新诊疗建议后
+
+    输入: health_record (健康档案) + consultation (问诊记录) 两张表的关键字段
+    输出: 5 类结构化建议 — diet/exercise/sleep/medication/seasonal
+
+    请求体:
+        {
+            "health_record": {
+                "member_name": "张三",
+                "gender": 1,
+                "birth_date": "1960-03-15",
+                "blood_type": "A",
+                "allergy": "青霉素过敏",
+                "past_illness": "高血压5年, 2型糖尿病",
+                "surgery_history": "阑尾切除术 2019",
+                "medication": "硝苯地平 30mg qd, 二甲双胍 500mg bid",
+                "is_self": 1,
+                "record_id": 1,
+                "patient_id": 1
+            },
+            "consultation": {
+                "symptom_text": "最近经常头晕，血压偏高",
+                "doctor_advice": "建议低盐低脂饮食，规律服药",
+                "ai_analysis": {"urgency": "普通", "possible_diseases": ["高血压"]},
+                "consultation_dialog": "...",
+                "consult_id": 1
+            }
+        }
+
+    响应:
+        {
+            "code": 200,
+            "data": {
+                "suggestions": [...],
+                "mysql_saved": {"status": "ok", "inserted": 10}   // 仅当提供 record_id+patient_id 时
+            },
+            "metadata": {"model": "qwen-flash", "latency_ms": 3500, "tokens": {...}},
+            "rag_context_used": true
+        }
+    """
+    try:
+        from health_suggestion import HealthSuggestionGenerator
+        generator = HealthSuggestionGenerator(verbose=False)
+
+        health_record = request.get("health_record", {}) or {}
+        consultation = request.get("consultation", {}) or {}
+
+        result = generator.generate(health_record, consultation)
+
+        if result.get("error"):
+            return {
+                "code": 500,
+                "message": result["error"],
+                "data": {"suggestions": result.get("suggestions", [])},
+            }
+
+        response_data = {
+            "code": 200,
+            "data": {
+                "suggestions": result["suggestions"],
+            },
+            "metadata": result.get("metadata", {}),
+            "rag_context_used": result.get("rag_context_used", False),
+        }
+
+        # 如果提供了 record_id 和 patient_id，自动持久化到 MySQL
+        record_id = health_record.get("record_id") or request.get("record_id")
+        patient_id = health_record.get("patient_id") or request.get("patient_id")
+
+        if record_id and patient_id:
+            save_result = generator.save_to_mysql(
+                result["suggestions"],
+                record_id=int(record_id),
+                patient_id=int(patient_id),
+            )
+            response_data["data"]["mysql_saved"] = save_result
+
+        return response_data
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"建议生成失败: {str(e)}")
+
+
+# ============================================================
 # AI 模型配置管理 (MySQL ai_model_config 表)
 # ============================================================
 

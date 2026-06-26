@@ -290,6 +290,61 @@ class HealthResponse(BaseModel):
 
 
 # ============================================================
+# 个性化生活建议
+# ============================================================
+
+class ConsultationInput(BaseModel):
+    """
+    问诊记录输入 (consultation 表中 AI 相关字段)
+
+    Java 端从 consultation 表查询后传入。
+    仅传入 AI 生成建议所需的字段，不传全部 21 个字段。
+    """
+    consult_id: Optional[int] = Field(default=None, description="问诊ID")
+    symptom_text: Optional[str] = Field(default=None, description="患者自述症状")
+    doctor_advice: Optional[str] = Field(default=None, description="医生诊疗建议")
+    ai_analysis: Optional[dict] = Field(default=None, description="AI结构化症状分析结果JSON")
+    consultation_dialog: Optional[str] = Field(default=None, description="多轮追问对话历史JSON")
+
+
+class SuggestionItem(BaseModel):
+    """单条生活建议"""
+    title: str = Field(description="建议标题，10-20字")
+    content: str = Field(description="建议详细内容，30-80字，通俗易懂")
+
+
+class SuggestionCategory(BaseModel):
+    """按分类分组的建议集合"""
+    category: str = Field(description="建议类别: diet/exercise/sleep/medication/seasonal")
+    items: list[SuggestionItem] = Field(description="该类别下的建议列表 (1-3条)")
+
+
+class SuggestionRequest(BaseModel):
+    """
+    个性化生活建议请求 (Java → /api/rag/health-suggestion)
+
+    对应 health_suggestion 表的输入:
+      - health_record: 健康档案数据 (不含 ai_summary)
+      - consultation: 问诊记录 AI 相关字段
+    """
+    health_record: Optional[HealthRecordInput] = Field(
+        default=None,
+        description="患者健康档案 (来自 health_record 表)"
+    )
+    consultation: Optional[ConsultationInput] = Field(
+        default=None,
+        description="患者问诊记录 (来自 consultation 表)"
+    )
+
+
+class SuggestionData(BaseModel):
+    """建议输出数据"""
+    suggestions: list[SuggestionCategory] = Field(
+        description="5 类个性化生活建议"
+    )
+
+
+# ============================================================
 # 用户反馈
 # ============================================================
 
