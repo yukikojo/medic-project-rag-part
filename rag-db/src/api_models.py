@@ -356,3 +356,50 @@ class FeedbackRequest(BaseModel):
     feedback: str = Field(..., description="反馈类型: positive / negative / neutral")
     actual_department: Optional[str] = Field(default=None, description="用户实际就诊科室 (negative时填写)")
     comment: Optional[str] = Field(default=None, description="附加评论")
+
+
+# ============================================================
+# Multi-turn Dialogue Agent
+# ============================================================
+
+class DialogueStartRequest(BaseModel):
+    """开始新对话会话请求 (Java → /api/rag/dialogue/start)"""
+    patient_id: Optional[int] = Field(default=None, description="患者ID (未登录可空)")
+    initial_symptom: Optional[str] = Field(default=None, description="初始症状描述 (可选，首轮直接输入)", max_length=2000)
+    max_turns: Optional[int] = Field(default=8, ge=3, le=20, description="最大对话轮数")
+
+
+class DialogueContinueRequest(BaseModel):
+    """继续对话请求 (Java → /api/rag/dialogue/continue)"""
+    session_id: str = Field(..., description="会话ID (UUID v4)", min_length=36, max_length=36)
+    patient_input: str = Field(..., description="患者本轮回答", min_length=1, max_length=2000)
+
+
+class AgentResponse(BaseModel):
+    """Agent 结构化响应 (DialogueManager → Java)"""
+    action: str = Field(..., description="Agent 动作: 'ask' | 'recommend' | 'emergency'")
+    session_id: str = Field(..., description="会话ID")
+    current_turn: int = Field(..., description="当前轮次")
+    question: Optional[str] = Field(default=None, description="追问问题 (action='ask' 时)")
+    question_reasoning: Optional[str] = Field(default=None, description="追问的鉴别诊断逻辑 (action='ask' 时)")
+    candidate_diseases: Optional[list[dict]] = Field(default=None, description="Top-3 候选疾病 [{disease, score, departments, distinguishing_symptoms}]")
+    recommendation: Optional[dict] = Field(default=None, description="最终推荐 (action='recommend' 时): {department, disease, confidence, reasoning, suggestion, alternative_departments}")
+    collected_info: Optional[dict] = Field(default=None, description="已收集信息摘要 {symptoms, body_parts, duration, severity}")
+    emergency_warning: Optional[str] = Field(default=None, description="紧急警告信息 (action='emergency' 时)")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="整体置信度 0.0-1.0")
+
+
+class DialogueSessionState(BaseModel):
+    """对话会话完整状态 (GET /api/rag/dialogue/{session_id})"""
+    session_id: str = Field(..., description="会话ID")
+    patient_id: Optional[int] = Field(default=None, description="患者ID")
+    status: str = Field(..., description="会话状态: active / closed / emergency / timeout")
+    current_turn: int = Field(..., description="当前轮次")
+    max_turns: int = Field(..., description="最大允许轮数")
+    collected_symptoms: Optional[list[dict]] = Field(default=None, description="已收集的症状列表")
+    extracted_keywords: Optional[list[str]] = Field(default=None, description="提取的关键词")
+    candidate_diseases: Optional[list[dict]] = Field(default=None, description="当前候选疾病")
+    dialogue_history: Optional[list[dict]] = Field(default=None, description="完整对话历史")
+    final_recommendation: Optional[dict] = Field(default=None, description="最终推荐结果")
+    created_at: Optional[str] = Field(default=None, description="创建时间")
+    updated_at: Optional[str] = Field(default=None, description="最后更新时间")

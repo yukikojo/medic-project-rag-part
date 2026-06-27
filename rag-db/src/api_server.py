@@ -12,15 +12,22 @@ FastAPI 服务 — Java 后端与 Python AI 引擎之间的 HTTP 网关
     # 生产模式 (多worker):
     uvicorn rag-db.src.api_server:app --host 0.0.0.0 --port 8000 --workers 4
 
-端点清单:
+端点清单 (24 endpoints):
     GET  /api/rag/health              — 健康检查
     POST /api/rag/search              — 智能导诊科室推荐 (核心)
     POST /api/rag/symptom/analyze     — 症状结构化和优化 (不检索)
+    POST /api/rag/search/enriched     — KG增强导诊
     POST /api/rag/emr/extract         — 病历要素提取 → medical_record 字段
     POST /api/rag/assist/info         — AI辅助问诊提示
     POST /api/rag/diseases/search     — 仅疾病检索 (不经过LLM)
     GET  /api/rag/departments         — 全部科室列表
     GET  /api/rag/department/{name}   — 科室详情
+    POST /api/rag/health-summary      — 健康档案AI摘要
+    POST /api/rag/health-suggestion   — 个性化生活建议
+    POST /api/rag/dialogue/start      — 开始多轮对话
+    POST /api/rag/dialogue/continue   — 继续多轮对话
+    GET  /api/rag/dialogue/{id}       — 获取对话会话状态
+    POST /api/rag/dialogue/{id}/close — 关闭对话会话
     POST /api/rag/feedback            — 用户反馈收集
 """
 
@@ -71,6 +78,7 @@ _pipeline = None
 _emr_processor = None
 _vector_store = None
 _mysql_kb_manager = None
+_dialogue_manager = None
 
 
 def get_pipeline():
@@ -111,6 +119,15 @@ def get_mysql_kb_manager():
         from kb_manager.mysql_kb_manager import MySQLKBManager
         _mysql_kb_manager = MySQLKBManager(verbose=False)
     return _mysql_kb_manager
+
+
+def get_dialogue_manager():
+    """Get or create DialogueManager singleton (multi-turn dialogue agent)."""
+    global _dialogue_manager
+    if _dialogue_manager is None:
+        from dialogue import DialogueManager
+        _dialogue_manager = DialogueManager(verbose=False)
+    return _dialogue_manager
 
 
 # ============================================================
@@ -1071,6 +1088,193 @@ def submit_feedback(request: dict):
         "message": "反馈已记录",
         "data": log_entry,
     }
+
+
+# ============================================================
+# Multi-turn Dialogue Agent
+# ============================================================
+
+
+@app.post("/api/rag/dialogue/start", tags=["Dialogue — 多轮对话"])
+def dialogue_start(request: dict):
+    """
+    开始新的多轮对话会话。
+
+    请求体:
+        {
+            "patient_id": 1001,             # optional
+            "initial_symptom": "头痛三天",   # optional — 传入则自动执行第一轮
+            "max_turns": 8                  # optional, default 8
+        }
+
+    响应:
+        action="ask"       → question (引导/追问)
+        action="recommend" → recommendation (症状已充足)
+        action="emergency" → emergency_warning (紧急关键词)
+    """
+    patient_id = request.get("patient_id")
+    initial_symptom = request.get("initial_symptom")
+    max_turns = request.get("max_turns", 8)
+
+    if initial_symptom is not None:
+        initial_symptom = str(initial_symptom).strip()
+        if len(initial_symptom) > 2000:
+            raise HTTPException(status_code=400, detail="initial_symptom 不能超过2000字符")
+
+    max_turns = max(3, min(20, int(max_turns)))
+
+    try:
+        manager = get_dialogue_manager()
+        result = manager.start_session(
+            patient_id=patient_id,
+            initial_symptom=initial_symptom,
+            max_turns=max_turns,
+        )
+
+        return {
+            "code": 200,
+            "message": "success",
+            "data": result,
+            "metadata": {
+                "agent": "dialogue_manager",
+                "session_status": "active" if result.get("action") == "ask"
+                                  else result.get("action", "unknown"),
+            },
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"对话会话启动失败: {str(e)}")
+
+
+@app.post("/api/rag/dialogue/continue", tags=["Dialogue — 多轮对话"])
+def dialogue_continue(request: dict):
+    """
+    继续现有的多轮对话会话。
+
+    请求体:
+        {
+            "session_id": "a1b2c3d4-...",   # required — UUID v4
+            "patient_input": "有恶心畏光"     # required — 患者本轮回答
+        }
+
+    响应:
+        action="ask"       → question (下一轮追问)
+        action="recommend" → recommendation (最终推荐, 会话自动关闭)
+        action="emergency" → emergency_warning (紧急, 会话自动标记)
+        action="error"     → error (会话不存在或已关闭)
+    """
+    session_id = request.get("session_id", "").strip()
+    patient_input = request.get("patient_input", "").strip()
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id 不能为空")
+    if len(session_id) != 36:
+        raise HTTPException(status_code=400, detail="session_id 必须是36字符UUID")
+    if not patient_input:
+        raise HTTPException(status_code=400, detail="patient_input 不能为空")
+    if len(patient_input) > 2000:
+        raise HTTPException(status_code=400, detail="patient_input 不能超过2000字符")
+
+    try:
+        manager = get_dialogue_manager()
+        result = manager.process(
+            session_id=session_id,
+            patient_input=patient_input,
+        )
+
+        if result.get("action") == "error":
+            return {
+                "code": 400,
+                "message": result.get("error", "Session error"),
+                "data": result,
+            }
+
+        return {
+            "code": 200,
+            "message": "success",
+            "data": result,
+            "metadata": {
+                "agent": "dialogue_manager",
+                "session_status": result.get("action", "unknown"),
+            },
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"对话处理失败: {str(e)}")
+
+
+@app.get("/api/rag/dialogue/{session_id}", tags=["Dialogue — 多轮对话"])
+def dialogue_get_session(session_id: str):
+    """
+    获取对话会话的完整状态。
+
+    路径参数:
+        session_id: UUID v4 会话ID
+
+    响应包含:
+        - 会话状态 (active/closed/emergency/timeout)
+        - 已收集的结构化症状
+        - 候选疾病列表
+        - 完整对话历史 (Q&A 时间线)
+        - 最终推荐结果 (如已关闭)
+    """
+    if len(session_id) != 36:
+        raise HTTPException(status_code=400, detail="session_id 必须是36字符UUID")
+
+    try:
+        manager = get_dialogue_manager()
+        state = manager.get_session_state(session_id)
+
+        if state is None:
+            raise HTTPException(status_code=404,
+                              detail=f"Session '{session_id}' not found")
+
+        return {
+            "code": 200,
+            "message": "success",
+            "data": state,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"获取会话状态失败: {str(e)}")
+
+
+@app.post("/api/rag/dialogue/{session_id}/close", tags=["Dialogue — 多轮对话"])
+def dialogue_close_session(session_id: str):
+    """
+    手动关闭对话会话。
+
+    路径参数:
+        session_id: UUID v4 会话ID
+
+    会话被标记为 closed，后续无法继续。
+    """
+    if len(session_id) != 36:
+        raise HTTPException(status_code=400, detail="session_id 必须是36字符UUID")
+
+    try:
+        manager = get_dialogue_manager()
+        success = manager.close_session(session_id)
+
+        if not success:
+            raise HTTPException(status_code=404,
+                              detail=f"Session '{session_id}' not found")
+
+        return {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "session_id": session_id,
+                "status": "closed",
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"关闭会话失败: {str(e)}")
 
 
 # ============================================================
