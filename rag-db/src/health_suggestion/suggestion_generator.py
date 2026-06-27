@@ -275,8 +275,8 @@ class HealthSuggestionGenerator:
         # 3. 加载配置
         try:
             from ai_config_loader import get_prompt, get_params
-            system_prompt = get_prompt("health_suggestion")
-            cfg = get_params("health_suggestion")
+            system_prompt = get_prompt("health_profile")
+            cfg = get_params("health_profile")
             _temp = cfg["temperature"]
             _max_tok = cfg["max_tokens"]
             _model = cfg["model"]
@@ -653,7 +653,7 @@ class HealthSuggestionGenerator:
                 port=int(os.getenv("MYSQL_PORT", 3306)),
                 user=os.getenv("MYSQL_USER", "root"),
                 password=os.getenv("MYSQL_PASSWORD", ""),
-                database="medical_rag",
+                database=os.getenv("MYSQL_DATABASE", "medical_rag"),
                 charset="utf8mb4",
             )
 
@@ -718,7 +718,7 @@ class HealthSuggestionGenerator:
                 port=int(os.getenv("MYSQL_PORT", 3306)),
                 user=os.getenv("MYSQL_USER", "root"),
                 password=os.getenv("MYSQL_PASSWORD", ""),
-                database="medical_rag",
+                database=os.getenv("MYSQL_DATABASE", "medical_rag"),
                 charset="utf8mb4",
             )
 

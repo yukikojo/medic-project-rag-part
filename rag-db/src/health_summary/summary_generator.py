@@ -186,8 +186,8 @@ class HealthSummaryGenerator:
         # 3. 加载配置
         try:
             from ai_config_loader import get_prompt, get_params
-            system_prompt = get_prompt("health_summary")
-            cfg = get_params("health_summary")
+            system_prompt = get_prompt("summary")
+            cfg = get_params("summary")
             _temp = cfg["temperature"]
             _max_tok = cfg["max_tokens"]
             _model = cfg["model"]

@@ -274,6 +274,7 @@ def analyze_symptoms(request: dict):
 
     响应:
         {"code": 200, "data": {"symptoms": ["腹痛","腹泻","恶心","食欲不振"], ...}}
+    """
 
 
 # ============================================================
@@ -382,7 +383,6 @@ def search_enriched(request: dict):
             "usage": rec.get("usage"),
         },
     }
-    """
     query = request.get("query", "").strip()
     if not query:
         raise HTTPException(status_code=400, detail="query 不能为空")

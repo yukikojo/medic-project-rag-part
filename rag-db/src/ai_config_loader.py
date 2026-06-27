@@ -193,9 +193,9 @@ _DEFAULT_CONFIGS = {
   "disease_summary": "病情摘要，50-100字，概述核心症状和可能的病理机制",
   "follow_up_questions": ["需追问的问题1", "问题2", "..."],
   "differential_diagnosis": ["可能的鉴别诊断1", "鉴别诊断2", "..."],
-  "suggested_exams": ["建议检查项目1", "检查项目2", "..."],
+  "necessary_tests": ["建议检查项目1", "检查项目2", "..."],
   "medication_suggestions": ["用药方向1 (注明需结合临床)", "..."],
-  "referral_suggestions": ["如需转诊的建议科室1", "..."]
+  "referral_depts": ["如需转诊的建议科室1", "..."]
 }
 
 ## 约束
@@ -205,8 +205,8 @@ _DEFAULT_CONFIGS = {
 - 鉴别诊断从高可能性到低可能性排列""",
     },
 
-    "chat": {
-        "scene": "chat",
+    "dialogue_followup": {
+        "scene": "dialogue_followup",
         "model_name": os.getenv("LLM_MODEL", "qwen-flash"),
         "api_base_url": os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
         "api_key": os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", ""),
@@ -216,8 +216,8 @@ _DEFAULT_CONFIGS = {
         "system_prompt": "你是一个智能医疗导诊助手，请基于医学知识回答用户的问题。",
     },
 
-    "health_summary": {
-        "scene": "health_summary",
+    "summary": {
+        "scene": "summary",
         "model_name": os.getenv("LLM_MODEL", "qwen-flash"),
         "api_base_url": os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
         "api_key": os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", ""),
@@ -246,8 +246,8 @@ _DEFAULT_CONFIGS = {
 - 格式要求：纯文本段落，不分条，不换行""",
     },
 
-    "health_suggestion": {
-        "scene": "health_suggestion",
+    "health_profile": {
+        "scene": "health_profile",
         "model_name": os.getenv("LLM_MODEL", "qwen-flash"),
         "api_base_url": os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
         "api_key": os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", ""),
@@ -326,6 +326,34 @@ _DEFAULT_CONFIGS = {
 - 对过敏药物必须明确标注警告
 - 不确定的内容请标注「建议咨询医生」
 - 输出严格 JSON，不要有 markdown 代码块标记""",
+    },
+
+    "advice_interpret": {
+        "scene": "advice_interpret",
+        "model_name": os.getenv("LLM_MODEL", "qwen-flash"),
+        "api_base_url": os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
+        "api_key": os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", ""),
+        "temperature": 0.3,
+        "max_tokens": 800,
+        "top_p": 0.9,
+        "system_prompt": """你是一位资深临床医师，擅长将医生的专业诊疗建议解读为患者易懂的语言。
+
+## 任务
+根据医生的原始诊疗建议，生成一份面向患者的解读说明。
+
+## 输出要求
+请严格按照以下 JSON 格式输出:
+{
+  "plain_explanation": "用通俗语言解释医生的诊断和建议",
+  "key_points": ["关键要点1", "要点2"],
+  "medication_guide": "用药指导说明",
+  "follow_up_advice": "复诊和生活注意事项"
+}
+
+## 约束
+- 语言通俗易懂，避免过度使用专业术语
+- 不确定的内容请标注「请以医生当面说明为准」
+- 不要添加医生未提及的诊断或建议""",
     },
 }
 

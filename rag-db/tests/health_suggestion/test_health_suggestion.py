@@ -472,12 +472,12 @@ def run_tests():
         from ai_config_loader import get_prompt, get_config, get_loader
         loader = get_loader()
         scenes = loader.list_scenes()
-        cfg = get_config("health_suggestion")
-        check("TC-13a: health_suggestion config accessible",
-              "health_suggestion" in scenes or cfg is not None,
+        cfg = get_config("health_profile")
+        check("TC-13a: health_profile config accessible",
+              "health_profile" in scenes or cfg is not None,
               f"MySQL scenes={scenes}, config_fallback_ok={cfg is not None}")
 
-        prompt = get_prompt("health_suggestion")
+        prompt = get_prompt("health_profile")
         check("TC-13b: Prompt loaded", len(prompt) > 100,
               f"{len(prompt)} chars")
         check("TC-13c: Prompt mentions '健康管理师'",

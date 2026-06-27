@@ -341,14 +341,14 @@ def run_tests():
         from ai_config_loader import get_prompt, get_config, get_loader
         loader = get_loader()
         scenes = loader.list_scenes()
-        check("TC-12a: health_summary scene exists", "health_summary" in scenes,
+        check("TC-12a: summary scene exists", "summary" in scenes,
               str(scenes))
 
-        prompt = get_prompt("health_summary")
+        prompt = get_prompt("summary")
         check("TC-12b: Prompt loaded", len(prompt) > 100, f"{len(prompt)} chars")
         check("TC-12c: Prompt mentions '全科医师'", "全科医师" in prompt or "医师" in prompt)
 
-        cfg = get_config("health_summary")
+        cfg = get_config("summary")
         check("TC-12d: Config has model", "model_name" in cfg, cfg.get("model_name", "?"))
         check("TC-12e: Config has temperature", cfg.get("temperature") is not None,
               str(cfg.get("temperature")))

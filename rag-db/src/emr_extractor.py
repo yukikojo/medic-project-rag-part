@@ -129,8 +129,8 @@ class AssistResult:
 
     __slots__ = (
         "follow_up_questions", "differential_diagnosis",
-        "suggested_exams", "medication_suggestions",
-        "referral_suggestions", "disease_summary",
+        "necessary_tests", "medication_suggestions",
+        "referral_depts", "disease_summary",
         "raw_response", "model", "usage", "latency_ms", "error",
     )
 
@@ -138,9 +138,9 @@ class AssistResult:
         self,
         follow_up_questions: Optional[list[str]] = None,
         differential_diagnosis: Optional[list[str]] = None,
-        suggested_exams: Optional[list[str]] = None,
+        necessary_tests: Optional[list[str]] = None,
         medication_suggestions: Optional[list[str]] = None,
-        referral_suggestions: Optional[list[str]] = None,
+        referral_depts: Optional[list[str]] = None,
         disease_summary: Optional[str] = None,
         raw_response: Optional[str] = None,
         model: Optional[str] = None,
@@ -150,9 +150,9 @@ class AssistResult:
     ):
         self.follow_up_questions = follow_up_questions or []
         self.differential_diagnosis = differential_diagnosis or []
-        self.suggested_exams = suggested_exams or []
+        self.necessary_tests = necessary_tests or []
         self.medication_suggestions = medication_suggestions or []
-        self.referral_suggestions = referral_suggestions or []
+        self.referral_depts = referral_depts or []
         self.disease_summary = disease_summary
         self.raw_response = raw_response
         self.model = model
@@ -168,9 +168,9 @@ class AssistResult:
                 "disease_summary": self.disease_summary,
                 "follow_up_questions": self.follow_up_questions,
                 "differential_diagnosis": self.differential_diagnosis,
-                "suggested_exams": self.suggested_exams,
+                "necessary_tests": self.necessary_tests,
                 "medication_suggestions": self.medication_suggestions,
-                "referral_suggestions": self.referral_suggestions,
+                "referral_depts": self.referral_depts,
             },
             "metadata": {
                 "model": self.model,
@@ -239,9 +239,9 @@ ASSIST_SYSTEM_PROMPT = """你是一位经验丰富的临床决策支持专家。
   "disease_summary": "病情摘要，50-100字，概述核心症状和可能的病理机制",
   "follow_up_questions": ["需追问的问题1", "问题2", "..."],
   "differential_diagnosis": ["可能的鉴别诊断1", "鉴别诊断2", "..."],
-  "suggested_exams": ["建议检查项目1", "检查项目2", "..."],
+  "necessary_tests": ["建议检查项目1", "检查项目2", "..."],
   "medication_suggestions": ["用药方向1 (注明需结合临床)", "..."],
-  "referral_suggestions": ["如需转诊的建议科室1", "..."]
+  "referral_depts": ["如需转诊的建议科室1", "..."]
 }}
 
 ## 约束
@@ -592,9 +592,9 @@ class EMRProcessor:
                 disease_summary=parsed.get("disease_summary"),
                 follow_up_questions=parsed.get("follow_up_questions", []),
                 differential_diagnosis=parsed.get("differential_diagnosis", []),
-                suggested_exams=parsed.get("suggested_exams", []),
+                necessary_tests=parsed.get("necessary_tests", []),
                 medication_suggestions=parsed.get("medication_suggestions", []),
-                referral_suggestions=parsed.get("referral_suggestions", []),
+                referral_depts=parsed.get("referral_depts", []),
                 raw_response=raw_text,
                 model=response.model,
                 usage={
@@ -757,6 +757,6 @@ if __name__ == "__main__":
         print(f"  病情摘要: {assist.disease_summary}")
         print(f"  追问问题: {assist.follow_up_questions}")
         print(f"  鉴别诊断: {assist.differential_diagnosis}")
-        print(f"  建议检查: {assist.suggested_exams}")
+        print(f"  建议检查: {assist.necessary_tests}")
         print(f"  用药建议: {assist.medication_suggestions}")
-        print(f"  转诊建议: {assist.referral_suggestions}")
+        print(f"  转诊建议: {assist.referral_depts}")

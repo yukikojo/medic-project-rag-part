@@ -246,9 +246,9 @@ def test_emr_processor():
                 ("disease_summary", assist.disease_summary),
                 ("follow_up_questions", assist.follow_up_questions),
                 ("differential_diagnosis", assist.differential_diagnosis),
-                ("suggested_exams", assist.suggested_exams),
+                ("necessary_tests", assist.necessary_tests),
                 ("medication_suggestions", assist.medication_suggestions),
-                ("referral_suggestions", assist.referral_suggestions),
+                ("referral_depts", assist.referral_depts),
             ]
             all_have = all(v for _, v in checks)
             if all_have:

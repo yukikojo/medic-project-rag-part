@@ -239,9 +239,9 @@ class AssistData(BaseModel):
     disease_summary: Optional[str] = Field(default=None, description="AI病情摘要")
     follow_up_questions: list[str] = Field(default_factory=list, description="建议追问的问题清单")
     differential_diagnosis: list[str] = Field(default_factory=list, description="可能的鉴别诊断方向")
-    suggested_exams: list[str] = Field(default_factory=list, description="建议的检查项目")
+    necessary_tests: list[str] = Field(default_factory=list, description="建议的检查项目")
     medication_suggestions: list[str] = Field(default_factory=list, description="用药方向建议")
-    referral_suggestions: list[str] = Field(default_factory=list, description="建议转诊科室")
+    referral_depts: list[str] = Field(default_factory=list, description="建议转诊科室")
 
 
 class AssistResponse(BaseModel):
