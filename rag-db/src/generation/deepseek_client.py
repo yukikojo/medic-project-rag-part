@@ -284,7 +284,16 @@ class DeepSeekClient:
 
         用途: UC-AI-01 症状结构化分析
         """
-        system_prompt = """你是一个医疗文本分析助手。从患者的症状描述中提取结构化信息。
+        # Try ai_config_loader first, fall back to hardcoded
+        try:
+            from ai_config_loader import get_prompt, get_params
+            system_prompt = get_prompt("symptom_extract")
+            cfg = get_params("symptom_extract")
+            _temp = cfg["temperature"]
+            _max_tok = cfg["max_tokens"]
+            _model = cfg["model"]
+        except Exception:
+            system_prompt = """你是一个医疗文本分析助手。从患者的症状描述中提取结构化信息。
 
 请严格按照以下 JSON 格式输出:
 {
@@ -294,16 +303,19 @@ class DeepSeekClient:
   "body_parts": ["头部", "胸部", ...],
   "keywords": ["关键词1", "关键词2", ...]
 }"""
+            _temp = 0.1
+            _max_tok = 400
+            _model = self.model
 
         try:
             response = self.client.chat.completions.create(
-                model=self.model,
+                model=_model or self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_query},
                 ],
-                temperature=0.1,
-                max_tokens=400,
+                temperature=_temp,
+                max_tokens=_max_tok,
                 response_format={"type": "json_object"},
             )
             raw_text = response.choices[0].message.content

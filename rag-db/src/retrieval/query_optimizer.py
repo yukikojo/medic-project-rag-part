@@ -357,11 +357,19 @@ class QueryOptimizer:
     # ================================================================
 
     def _optimize_with_llm(self, raw_query: str) -> dict:
-        """使用 DeepSeek LLM 进行智能标准化"""
+        """使用 LLM 进行智能标准化 (优先读取 ai_config_loader query_optimize 场景)"""
         if not self._llm_client:
             return self._empty_result(raw_query, _llm_failed=True)
 
-        system_prompt = """你是一个中文医疗文本标准化助手。你的任务是将患者的口语化、方言化症状描述转化为标准化的医学症状术语。
+        # Try ai_config_loader first, fall back to hardcoded
+        try:
+            from ai_config_loader import get_prompt, get_params
+            system_prompt = get_prompt("query_optimize")
+            cfg = get_params("query_optimize")
+            _temp = cfg["temperature"]
+            _max_tok = cfg["max_tokens"]
+        except Exception:
+            system_prompt = """你是一个中文医疗文本标准化助手。你的任务是将患者的口语化、方言化症状描述转化为标准化的医学症状术语。
 
 ## 规则
 1. **口语→标准**: "肚子疼"→"腹痛"、"拉肚子"→"腹泻"、"想吐"→"恶心"、"发烧"→"发热"、"心慌"→"心悸"
@@ -383,6 +391,8 @@ class QueryOptimizer:
   "has_emergency_signals": false,
   "note": "标准化说明, 如'已将口语表达转换为标准术语'"
 }"""
+            _temp = 0.1
+            _max_tok = 500
 
         user_message = f"请将以下患者的症状描述标准化为医学术语:\n\n{raw_query}"
 
@@ -393,8 +403,8 @@ class QueryOptimizer:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                temperature=0.1,
-                max_tokens=500,
+                temperature=_temp,
+                max_tokens=_max_tok,
                 response_format={"type": "json_object"},
             )
 

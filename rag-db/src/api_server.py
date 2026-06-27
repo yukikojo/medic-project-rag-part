@@ -79,6 +79,7 @@ _emr_processor = None
 _vector_store = None
 _mysql_kb_manager = None
 _dialogue_manager = None
+_advice_interpreter = None
 
 
 def get_pipeline():
@@ -128,6 +129,15 @@ def get_dialogue_manager():
         from dialogue import DialogueManager
         _dialogue_manager = DialogueManager(verbose=False)
     return _dialogue_manager
+
+
+def get_advice_interpreter():
+    """Get or create AdviceInterpreter singleton (doctor advice translation)."""
+    global _advice_interpreter
+    if _advice_interpreter is None:
+        from advice_interpret import AdviceInterpreter
+        _advice_interpreter = AdviceInterpreter(verbose=False)
+    return _advice_interpreter
 
 
 # ============================================================
@@ -292,6 +302,32 @@ def analyze_symptoms(request: dict):
     响应:
         {"code": 200, "data": {"symptoms": ["腹痛","腹泻","恶心","食欲不振"], ...}}
     """
+    query = request.get("query", "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query 不能为空")
+
+    pipeline = get_pipeline()
+    result = pipeline.optimize_query(query)
+
+    # Also extract symptoms via LLM for richer analysis
+    try:
+        llm_symptoms = pipeline.llm.extract_symptoms(query)
+    except Exception:
+        llm_symptoms = {"error": "LLM symptom extraction unavailable"}
+
+    return {
+        "code": 200,
+        "data": {
+            "original_query": result.get("original_query", query),
+            "optimized_query": result.get("optimized_query", query),
+            "symptoms": result.get("symptoms", []),
+            "body_parts": result.get("body_parts", []),
+            "severity": result.get("severity", "未知"),
+            "has_emergency_signals": result.get("has_emergency_signals", False),
+            "normalization_note": result.get("normalization_note", ""),
+            "llm_analysis": llm_symptoms,
+        },
+    }
 
 
 # ============================================================
@@ -398,32 +434,6 @@ def search_enriched(request: dict):
             "kg_enriched": True,
             "model": rec.get("model"),
             "usage": rec.get("usage"),
-        },
-    }
-    query = request.get("query", "").strip()
-    if not query:
-        raise HTTPException(status_code=400, detail="query 不能为空")
-
-    pipeline = get_pipeline()
-    result = pipeline.optimize_query(query)
-
-    # Also extract symptoms via LLM for richer analysis
-    try:
-        llm_symptoms = pipeline.llm.extract_symptoms(query)
-    except Exception:
-        llm_symptoms = {"error": "LLM symptom extraction unavailable"}
-
-    return {
-        "code": 200,
-        "data": {
-            "original_query": result.get("original_query", query),
-            "optimized_query": result.get("optimized_query", query),
-            "symptoms": result.get("symptoms", []),
-            "body_parts": result.get("body_parts", []),
-            "severity": result.get("severity", "未知"),
-            "has_emergency_signals": result.get("has_emergency_signals", False),
-            "normalization_note": result.get("normalization_note", ""),
-            "llm_analysis": llm_symptoms,
         },
     }
 
@@ -1275,6 +1285,61 @@ def dialogue_close_session(session_id: str):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"关闭会话失败: {str(e)}")
+
+
+# ============================================================
+# Advice Interpret — 医嘱解读
+# ============================================================
+
+
+@app.post("/api/rag/advice/interpret", tags=["Advice — 医嘱解读"])
+def interpret_doctor_advice(request: dict):
+    """
+    将医生专业诊疗建议翻译为患者易懂的通俗语言。
+
+    请求体:
+        {
+            "doctor_advice": "建议低盐低脂饮食，硝苯地平缓释片 30mg qd...",
+            "patient_context": "患者张三，男，65岁，高血压5年"   # optional
+        }
+
+    响应:
+        {
+            "plain_explanation": "通俗解释",
+            "key_points": ["要点1", "要点2"],
+            "medication_guide": "用药指导",
+            "follow_up_advice": "复诊注意事项"
+        }
+    """
+    doctor_advice = request.get("doctor_advice", "").strip()
+    if not doctor_advice:
+        raise HTTPException(status_code=400, detail="doctor_advice 不能为空")
+    if len(doctor_advice) > 5000:
+        raise HTTPException(status_code=400, detail="doctor_advice 不能超过5000字符")
+
+    patient_context = request.get("patient_context", "").strip() or None
+
+    try:
+        interpreter = get_advice_interpreter()
+        result = interpreter.interpret(
+            doctor_advice=doctor_advice,
+            patient_context=patient_context,
+        )
+
+        return {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "plain_explanation": result.get("plain_explanation", ""),
+                "key_points": result.get("key_points", []),
+                "medication_guide": result.get("medication_guide", ""),
+                "follow_up_advice": result.get("follow_up_advice", ""),
+            },
+            "metadata": result.get("metadata", {}),
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"医嘱解读失败: {str(e)}")
 
 
 # ============================================================
