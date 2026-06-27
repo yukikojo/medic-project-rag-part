@@ -67,12 +67,14 @@
 ## 二、项目结构
 
 ```
-rag-db/
-├── README.md
-├── requirements.txt
-├── .env                          # API Key + 模型路径 + MySQL 配置
+.
+├── README.md                      ← 本文件
+├── .env                           # API Key + 模型路径 + MySQL 配置
 │
-├── src/                          # Python AI 引擎源码
+└── rag-db/
+    ├── requirements.txt
+    │
+    ├── src/                        # Python AI 引擎源码
 │   ├── api_server.py             # FastAPI 网关 (20 个端点)
 │   ├── api_models.py             # Pydantic 请求/响应模型
 │   ├── ai_config_loader.py       # AI 模型配置 (MySQL + 60s 缓存)
@@ -202,7 +204,7 @@ uvicorn rag-db.src.api_server:app --host 0.0.0.0 --port 8000 --workers 4
 
 ## 四、API 端点概览
 
-完整文档见 [docs/API_REFERENCE.md](docs/API_REFERENCE.md)。
+完整文档见 [docs/API_REFERENCE.md](rag-db/docs/API_REFERENCE.md)。
 
 | # | Method | Path | 说明 | 延迟 |
 |---|--------|------|------|------|
@@ -288,7 +290,7 @@ for cat in result["suggestions"]:
 
 ## 七、性能指标
 
-详见 [docs/PERFORMANCE_METRICS.md](docs/PERFORMANCE_METRICS.md)。
+详见 [docs/PERFORMANCE_METRICS.md](rag-db/docs/PERFORMANCE_METRICS.md)。
 
 | 指标 | 数值 |
 |------|------|
