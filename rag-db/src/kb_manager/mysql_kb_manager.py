@@ -31,7 +31,7 @@ MySQL 表结构 (rag_disease):
   MYSQL_DATABASE=medical_rag
 
 使用示例:
-    from mysql_kb_manager import MySQLKBManager
+    from kb_manager.mysql_kb_manager import MySQLKBManager
 
     mgr = MySQLKBManager()
 

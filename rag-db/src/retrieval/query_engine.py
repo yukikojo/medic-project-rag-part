@@ -6,7 +6,7 @@ RAG 向量知识库查询引擎 — VectorStore 抽象层
 Spring Boot 后端通过 REST API 或子进程调用本模块的 search 方法。
 
 使用示例:
-    from query_engine import VectorStore
+    from retrieval.query_engine import VectorStore
 
     store = VectorStore()  # 默认 Chroma backend
 
@@ -36,7 +36,7 @@ _load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."
 # ============================================================
 # 配置
 # ============================================================
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "medical_rag_db")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "medical_rag_db")
 
 # Embedding model — local path, configured via .env → EMBEDDING_MODEL_PATH
 # BAAI/bge-m3: 1024-dim, multilingual (CN/EN 100+), MTR hybrid retrieval, 8192 tokens, ~2.2GB
@@ -122,8 +122,8 @@ class VectorStore:
         """延迟加载 reranker 模型"""
         if self._use_reranker and self._reranker is None:
             import importlib.util as _iu
-            _rr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reranker.py")
-            _rr_spec = _iu.spec_from_file_location("reranker", _rr_path)
+            _rr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reranker", "reranker.py")
+            _rr_spec = _iu.spec_from_file_location("reranker.reranker", _rr_path)
             _rr = _iu.module_from_spec(_rr_spec)
             _rr_spec.loader.exec_module(_rr)
             self._reranker = _rr.Reranker(
@@ -365,7 +365,7 @@ class VectorStore:
         # Optional: KG enrichment (drugs, foods, checks, complications, cures)
         if enrich_kg and disease_results:
             try:
-                from kg_enricher import get_enricher
+                from enrichment.kg_enricher import get_enricher
                 enricher = get_enricher()
                 enriched = enricher.enrich_comprehensive(
                     result, max_drugs=5, max_foods=5,

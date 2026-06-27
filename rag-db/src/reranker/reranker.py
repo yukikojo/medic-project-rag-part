@@ -14,7 +14,7 @@ Model: BAAI/bge-reranker-v2-m3 (cross-encoder, ~1.1GB)
   - Takes (query, passage) pairs, outputs relevance scores
 
 Usage:
-    from reranker import Reranker
+    from reranker.reranker import Reranker
 
     reranker = Reranker()
     results = reranker.rerank_results(

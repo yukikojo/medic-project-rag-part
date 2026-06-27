@@ -20,7 +20,7 @@ query_optimizer.py
   用户原始输入 → QueryOptimizer.optimize() → 标准化query → VectorStore检索 → LLM推荐
 
 使用示例:
-    from query_optimizer import QueryOptimizer
+    from retrieval.query_optimizer import QueryOptimizer
 
     optimizer = QueryOptimizer()
     result = optimizer.optimize("肚子疼拉稀想吐没胃口")
@@ -681,7 +681,7 @@ def get_optimizer(
     获取全局 QueryOptimizer 单例。
 
     使用方式:
-        from query_optimizer import get_optimizer
+        from retrieval.query_optimizer import get_optimizer
         optimizer = get_optimizer()
         result = optimizer.optimize("肚子疼拉肚子")
 

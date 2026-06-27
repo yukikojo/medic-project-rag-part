@@ -114,8 +114,8 @@ class HealthSummaryGenerator:
         """复用 DeepSeekClient。"""
         if self._llm_client is None:
             import importlib.util as _iu
-            _dc = os.path.join(_src, "deepseek_client.py")
-            _spec = _iu.spec_from_file_location("deepseek_client", _dc)
+            _dc = os.path.join(_src, "generation/deepseek_client.py")
+            _spec = _iu.spec_from_file_location("generation.deepseek_client", _dc)
             _mod = _iu.module_from_spec(_spec)
             _spec.loader.exec_module(_mod)
             self._llm_client = _mod.DeepSeekClient(model=self.model)
@@ -126,8 +126,8 @@ class HealthSummaryGenerator:
         """复用 VectorStore 做 RAG 检索。"""
         if self._vector_store is None:
             import importlib.util as _iu
-            _qe = os.path.join(_src, "query_engine.py")
-            _spec = _iu.spec_from_file_location("query_engine", _qe)
+            _qe = os.path.join(_src, "retrieval/query_engine.py")
+            _spec = _iu.spec_from_file_location("retrieval.query_engine", _qe)
             _mod = _iu.module_from_spec(_spec)
             _spec.loader.exec_module(_mod)
             self._vector_store = _mod.VectorStore()

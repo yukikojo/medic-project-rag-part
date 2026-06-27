@@ -77,7 +77,7 @@ def get_pipeline():
     """Get or create RAGPipeline singleton."""
     global _pipeline
     if _pipeline is None:
-        from deepseek_client import RAGPipeline
+        from generation.deepseek_client import RAGPipeline
         _pipeline = RAGPipeline(
             reranker_enabled=True,
             optimizer_mode="hybrid",
@@ -90,7 +90,7 @@ def get_emr_processor():
     """Get or create EMRProcessor singleton."""
     global _emr_processor
     if _emr_processor is None:
-        from emr_extractor import EMRProcessor
+        from emr.emr_extractor import EMRProcessor
         _emr_processor = EMRProcessor(verbose=False)
     return _emr_processor
 
@@ -99,7 +99,7 @@ def get_vector_store():
     """Get or create VectorStore singleton."""
     global _vector_store
     if _vector_store is None:
-        from query_engine import VectorStore
+        from retrieval.query_engine import VectorStore
         _vector_store = VectorStore()
     return _vector_store
 
@@ -108,7 +108,7 @@ def get_mysql_kb_manager():
     """Get or create MySQLKBManager singleton (lazy, only if MySQL is configured)."""
     global _mysql_kb_manager
     if _mysql_kb_manager is None:
-        from mysql_kb_manager import MySQLKBManager
+        from kb_manager.mysql_kb_manager import MySQLKBManager
         _mysql_kb_manager = MySQLKBManager(verbose=False)
     return _mysql_kb_manager
 

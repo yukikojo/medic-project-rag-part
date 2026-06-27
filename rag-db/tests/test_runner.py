@@ -633,7 +633,7 @@ class TestRunner:
     def vector_store(self):
         if self._vector_store is None:
             spec = importlib.util.spec_from_file_location(
-                "query_engine", os.path.join(_RAG_DIR, "query_engine.py")
+                "query_engine", os.path.join(_RAG_DIR, "retrieval/query_engine.py")
             )
             qe = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(qe)
@@ -645,7 +645,7 @@ class TestRunner:
         if self._pipeline is None:
             try:
                 spec = importlib.util.spec_from_file_location(
-                    "deepseek_client", os.path.join(_RAG_DIR, "deepseek_client.py")
+                    "deepseek_client", os.path.join(_RAG_DIR, "generation/deepseek_client.py")
                 )
                 dc = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(dc)
@@ -663,7 +663,7 @@ class TestRunner:
         if self._optimizer is None:
             try:
                 spec = importlib.util.spec_from_file_location(
-                    "query_optimizer", os.path.join(_RAG_DIR, "query_optimizer.py")
+                    "query_optimizer", os.path.join(_RAG_DIR, "retrieval/query_optimizer.py")
                 )
                 qo = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(qo)

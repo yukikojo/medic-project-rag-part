@@ -72,10 +72,10 @@ def _load_module(name, filename):
     return mod
 
 
-_mod_qe = _load_module("query_engine", "query_engine.py")
-_mod_reranker = _load_module("reranker", "reranker.py")
-_mod_dc = _load_module("deepseek_client", "deepseek_client.py")
-_mod_qo = _load_module("query_optimizer", "query_optimizer.py")
+_mod_qe = _load_module("query_engine", "retrieval/query_engine.py")
+_mod_reranker = _load_module("reranker", "reranker/reranker.py")
+_mod_dc = _load_module("deepseek_client", "generation/deepseek_client.py")
+_mod_qo = _load_module("query_optimizer", "retrieval/query_optimizer.py")
 
 VectorStore = _mod_qe.VectorStore if _mod_qe else None
 Reranker = _mod_reranker.Reranker if _mod_reranker else None

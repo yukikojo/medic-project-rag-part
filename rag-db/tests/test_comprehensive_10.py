@@ -54,10 +54,10 @@ def _load_module(module_name, filename):
 
 
 # 预加载所有模块（可能部分失败，优雅降级）
-_mod_query_engine = _load_module("query_engine", "query_engine.py")
-_mod_reranker = _load_module("reranker", "reranker.py")
-_mod_deepseek = _load_module("deepseek_client", "deepseek_client.py")
-_mod_optimizer = _load_module("query_optimizer", "query_optimizer.py")
+_mod_query_engine = _load_module("query_engine", "retrieval/query_engine.py")
+_mod_reranker = _load_module("reranker", "reranker/reranker.py")
+_mod_deepseek = _load_module("deepseek_client", "generation/deepseek_client.py")
+_mod_optimizer = _load_module("query_optimizer", "retrieval/query_optimizer.py")
 _mod_build = _load_module("build_knowledge_base", "build_knowledge_base.py")
 _mod_config = _load_module("config", "config.py")
 _mod_chart = _load_module("chart_generator", "chart_generator.py")
@@ -860,7 +860,7 @@ class ComprehensiveTestSuite:
             result.add_check("batch_add_terms()", batch_count == 2)
 
             # 清理测试数据
-            from query_optimizer import COLLOQUIAL_MAP, _COLLOQUIAL_TO_STANDARD
+            from retrieval.query_optimizer import COLLOQUIAL_MAP, _COLLOQUIAL_TO_STANDARD
             for std in ["测试标准术语", "测试标准A", "测试标准B"]:
                 COLLOQUIAL_MAP.pop(std, None)
             for col in ["测试口语词XYZ", "口语A123", "口语B456"]:

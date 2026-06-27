@@ -21,7 +21,7 @@ kg_enricher.py
     → 返回富化后的 JSON 给 Java 后端
 
 使用示例:
-    from kg_enricher import KGEnricher
+    from enrichment.kg_enricher import KGEnricher
 
     enricher = KGEnricher()
     # 单个疾病

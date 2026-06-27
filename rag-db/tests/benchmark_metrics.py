@@ -22,7 +22,7 @@ def run_latency_benchmark():
     print("  [1/3] RAG Retrieval Latency Benchmark")
     print("=" * 65)
 
-    from query_engine import VectorStore
+    from retrieval.query_engine import VectorStore
     vs = VectorStore()
 
     queries = [
@@ -59,7 +59,7 @@ def run_latency_benchmark():
     # Benchmark comprehensive_search WITH reranker
     reranker_available = False
     try:
-        from reranker import Reranker
+        from reranker.reranker import Reranker
         from config import RERANKER_MODEL_PATH
         vs._reranker = Reranker(model_path=RERANKER_MODEL_PATH)
         vs._use_reranker = True
@@ -107,12 +107,12 @@ def run_recall_precision_benchmark():
     print("  [2/3] Reranker Recall@K / Precision@K Benchmark")
     print("=" * 65)
 
-    from query_engine import VectorStore
+    from retrieval.query_engine import VectorStore
     vs = VectorStore()
 
     # Load reranker
     try:
-        from reranker import Reranker
+        from reranker.reranker import Reranker
         from config import RERANKER_MODEL_PATH
         vs._reranker = Reranker(model_path=RERANKER_MODEL_PATH)
         vs._use_reranker = True
@@ -270,15 +270,15 @@ def run_coverage_analysis():
     # Manual overrides for known matches (verified by reading test files)
     known_matches = {
         "ai_config_loader.py": ["health_suggestion/test_health_suggestion.py", "health_summary/test_health_summary.py", "test_emr.py"],
-        "deepseek_client.py": ["test_rag.py", "test_runner.py", "test_emr.py", "test_comprehensive_10.py", "full_pipeline_test.py"],
-        "query_engine.py": ["test_rag.py", "test_runner.py", "full_pipeline_test.py", "test_comprehensive_10.py", "test_reranker_comparison.py", "benchmark_metrics.py", "test_kg_enrich.py"],
+        "generation/deepseek_client.py": ["test_rag.py", "test_runner.py", "test_emr.py", "test_comprehensive_10.py", "full_pipeline_test.py"],
+        "retrieval/query_engine.py": ["test_rag.py", "test_runner.py", "full_pipeline_test.py", "test_comprehensive_10.py", "test_reranker_comparison.py", "benchmark_metrics.py", "test_kg_enrich.py"],
         "api_models.py": ["test_emr.py", "test_rag.py", "health_suggestion/test_health_suggestion.py"],
         "api_server.py": [],
         "kg_enricher.py": ["test_kg_enrich.py", "full_pipeline_test.py"],
-        "emr_extractor.py": ["test_emr.py"],
-        "query_optimizer.py": ["test_rag.py", "test_runner.py", "test_comprehensive_10.py", "full_pipeline_test.py"],
-        "mysql_kb_manager.py": ["full_pipeline_test.py"],
-        "reranker.py": ["test_comprehensive_10.py", "full_pipeline_test.py", "test_reranker_comparison.py", "benchmark_metrics.py"],
+        "emr/emr_extractor.py": ["test_emr.py"],
+        "retrieval/query_optimizer.py": ["test_rag.py", "test_runner.py", "test_comprehensive_10.py", "full_pipeline_test.py"],
+        "kb_manager/mysql_kb_manager.py": ["full_pipeline_test.py"],
+        "reranker/reranker.py": ["test_comprehensive_10.py", "full_pipeline_test.py", "test_reranker_comparison.py", "benchmark_metrics.py"],
         "config.py": ["test_rag.py", "test_comprehensive_10.py", "test_reranker_comparison.py", "full_pipeline_test.py", "benchmark_metrics.py"],
         "chart_generator.py": [],
         "download_reranker.py": [],

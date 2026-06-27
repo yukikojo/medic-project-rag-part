@@ -92,7 +92,7 @@ def test_stage2_optimizer():
     stage(2, "QueryOptimizer 口语化标准化")
 
     try:
-        from query_optimizer import QueryOptimizer
+        from retrieval.query_optimizer import QueryOptimizer
         opt = QueryOptimizer(mode="rule", cache_enabled=True, verbose=False)
 
         tests = [
@@ -132,7 +132,7 @@ def test_stage3_retrieval():
     stage(3, "VectorStore 向量检索 (BGE-M3 + ChromaDB)")
 
     try:
-        from query_engine import VectorStore
+        from retrieval.query_engine import VectorStore
         store = VectorStore()
 
         # Stats
@@ -172,7 +172,7 @@ def test_stage4_reranker():
     stage(4, "Reranker Cross-Encoder 精排")
 
     try:
-        from reranker import Reranker, RERANKER_MODEL_PATH
+        from reranker.reranker import Reranker, RERANKER_MODEL_PATH
         import os as _os
 
         if _os.path.exists(RERANKER_MODEL_PATH):
@@ -213,7 +213,7 @@ def test_stage5_kg():
     stage(5, "KG Enricher 知识图谱富化 (MySQL rag_disease_kg)")
 
     try:
-        from kg_enricher import KGEnricher
+        from enrichment.kg_enricher import KGEnricher
         enricher = KGEnricher(use_mysql=True, verbose=False)
 
         # Exact match
@@ -247,8 +247,8 @@ def test_stage6_llm():
     stage(6, "LLM Generation (DeepSeek 科室推荐)")
 
     try:
-        from deepseek_client import DeepSeekClient, RAGPipeline
-        from query_engine import VectorStore
+        from generation.deepseek_client import DeepSeekClient, RAGPipeline
+        from retrieval.query_engine import VectorStore
 
         pipeline = RAGPipeline(reranker_enabled=True, optimizer_mode="rule", verbose=False)
 
@@ -291,7 +291,7 @@ def test_stage7_emr():
     stage(7, "EMR Extraction 病历要素提取")
 
     try:
-        from emr_extractor import EMRProcessor
+        from emr.emr_extractor import EMRProcessor
         processor = EMRProcessor(verbose=False)
 
         result = processor.extract_medical_record(

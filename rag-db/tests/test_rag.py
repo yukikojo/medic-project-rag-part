@@ -26,8 +26,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 # rag-db 目录名含连字符，不能用 import，用 importlib 加载
 import importlib.util
-_qe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "query_engine.py")
-_spec = importlib.util.spec_from_file_location("query_engine", _qe_path)
+_qe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "retrieval/query_engine.py")
+_spec = importlib.util.spec_from_file_location("retrieval.query_engine", _qe_path)
 _query_engine = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_query_engine)
 VectorStore = _query_engine.VectorStore
@@ -472,8 +472,8 @@ def run_tests(store: VectorStore):
 
     # 初始化 QueryOptimizer (规则模式, 不依赖LLM)
     try:
-        _qo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "query_optimizer.py")
-        _qo_spec = importlib.util.spec_from_file_location("query_optimizer", _qo_path)
+        _qo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "retrieval/query_optimizer.py")
+        _qo_spec = importlib.util.spec_from_file_location("retrieval.query_optimizer", _qo_path)
         _qo = importlib.util.module_from_spec(_qo_spec)
         _qo_spec.loader.exec_module(_qo)
         QueryOptimizer = _qo.QueryOptimizer
@@ -615,8 +615,8 @@ def run_tests(store: VectorStore):
         # --- TC-34: 优化器+Pipeline 集成测试 ---
         sub("TC-34: Optimizer + RAGPipeline integration")
         try:
-            _dc_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "deepseek_client.py")
-            _dc_spec = importlib.util.spec_from_file_location("deepseek_client", _dc_path)
+            _dc_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "generation/deepseek_client.py")
+            _dc_spec = importlib.util.spec_from_file_location("generation.deepseek_client", _dc_path)
             _dc = importlib.util.module_from_spec(_dc_spec)
             _dc_spec.loader.exec_module(_dc)
             RAGPipeline = _dc.RAGPipeline

@@ -18,7 +18,7 @@ medical_record 实体规范的 8 个核心字段:
   Java → POST /api/rag/assist/info → EMRProcessor → 辅助问诊提示
 
 使用示例:
-    from emr_extractor import EMRProcessor
+    from emr.emr_extractor import EMRProcessor
 
     processor = EMRProcessor()
     result = processor.extract_medical_record(
@@ -334,8 +334,8 @@ class EMRProcessor:
         if self._llm_client is None:
             import importlib.util as _iu
 
-            _dc_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deepseek_client.py")
-            _dc_spec = _iu.spec_from_file_location("deepseek_client", _dc_path)
+            _dc_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "generation", "deepseek_client.py")
+            _dc_spec = _iu.spec_from_file_location("generation.deepseek_client", _dc_path)
             _dc = _iu.module_from_spec(_dc_spec)
             _dc_spec.loader.exec_module(_dc)
             self._llm_client = _dc.DeepSeekClient(model=self.model)
@@ -347,8 +347,8 @@ class EMRProcessor:
         if self._vector_store is None:
             import importlib.util as _iu
 
-            _qe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "query_engine.py")
-            _qe_spec = _iu.spec_from_file_location("query_engine", _qe_path)
+            _qe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "retrieval", "query_engine.py")
+            _qe_spec = _iu.spec_from_file_location("retrieval.query_engine", _qe_path)
             _qe = _iu.module_from_spec(_qe_spec)
             _qe_spec.loader.exec_module(_qe)
             self._vector_store = _qe.VectorStore()

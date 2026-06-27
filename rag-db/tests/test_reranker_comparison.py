@@ -44,7 +44,7 @@ def _load_query_engine_module():
     """Load query_engine module once (singleton)."""
     if not hasattr(_load_query_engine_module, "_module"):
         spec = importlib.util.spec_from_file_location(
-            "query_engine", os.path.join(_RAG_DIR, "query_engine.py")
+            "query_engine", os.path.join(_RAG_DIR, "retrieval/query_engine.py")
         )
         qe = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(qe)
@@ -55,7 +55,7 @@ def _load_query_engine_module():
 def load_optimizer():
     """Load QueryOptimizer (rule mode)"""
     spec = importlib.util.spec_from_file_location(
-        "query_optimizer", os.path.join(_RAG_DIR, "query_optimizer.py")
+        "query_optimizer", os.path.join(_RAG_DIR, "retrieval/query_optimizer.py")
     )
     qo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(qo)

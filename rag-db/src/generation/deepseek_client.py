@@ -17,7 +17,7 @@ deepseek_client.py
     OPTIMIZER_MODEL=...       # 默认: deepseek-chat
 
 使用示例:
-    from deepseek_client import DeepSeekClient
+    from generation.deepseek_client import DeepSeekClient
 
     # 方式1: 默认使用 DeepSeek (向后兼容)
     client = DeepSeekClient()
@@ -413,8 +413,8 @@ class RAGPipeline:
         """
         # 延迟导入, 避免循环依赖
         import importlib.util
-        _qe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "query_engine.py")
-        _spec = importlib.util.spec_from_file_location("query_engine", _qe_path)
+        _qe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "retrieval", "query_engine.py")
+        _spec = importlib.util.spec_from_file_location("retrieval.query_engine", _qe_path)
         _qe = importlib.util.module_from_spec(_spec)
         _spec.loader.exec_module(_qe)
 
@@ -431,8 +431,8 @@ class RAGPipeline:
         if optimizer_mode is not None:
             try:
                 # 延迟导入 query_optimizer
-                _qo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "query_optimizer.py")
-                _qo_spec = importlib.util.spec_from_file_location("query_optimizer", _qo_path)
+                _qo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "retrieval", "query_optimizer.py")
+                _qo_spec = importlib.util.spec_from_file_location("retrieval.query_optimizer", _qo_path)
                 _qo = importlib.util.module_from_spec(_qo_spec)
                 _qo_spec.loader.exec_module(_qo)
                 self._optimizer = _qo.QueryOptimizer(
