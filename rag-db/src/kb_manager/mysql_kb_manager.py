@@ -147,9 +147,12 @@ class MySQLKBManager:
         self.mysql_config = mysql_config or MYSQL_CONFIG
         self.verbose = verbose
 
-        # ChromaDB path
+        # ChromaDB path (env CHROMADB_PATH for Docker)
         if db_path is None:
-            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "medical_rag_db")
+            db_path = os.getenv(
+                "CHROMADB_PATH",
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "medical_rag_db"),
+            )
         self.db_path = db_path
 
         # Lazy-loaded singletons
@@ -213,7 +216,7 @@ class MySQLKBManager:
 
             model_path = os.getenv(
                 "EMBEDDING_MODEL_PATH",
-                r"D:\floder-for-claude\medic\bge-m3"
+                r"BAAI/bge-m3"
             )
 
             if self.verbose:

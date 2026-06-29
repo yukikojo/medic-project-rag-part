@@ -36,20 +36,24 @@ _load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."
 # ============================================================
 # 配置
 # ============================================================
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "medical_rag_db")
+# Docker: set CHROMADB_PATH=/app/data/chromadb
+DB_PATH = os.getenv(
+    "CHROMADB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "medical_rag_db"),
+)
 
 # Embedding model — local path, configured via .env → EMBEDDING_MODEL_PATH
 # BAAI/bge-m3: 1024-dim, multilingual (CN/EN 100+), MTR hybrid retrieval, 8192 tokens, ~2.2GB
 EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL_PATH",
-    r"D:\floder-for-claude\medic\bge-m3"
+    r"BAAI/bge-m3"
 )
 
 # Reranker config — configured via .env → RERANKER_MODEL_PATH
 # BAAI/bge-reranker-v2-m3: cross-encoder, multilingual, ~1.1GB
 RERANKER_MODEL_PATH = os.getenv(
     "RERANKER_MODEL_PATH",
-    r"D:\floder-for-claude\medic\bge-reranker-v2-m3"
+    r"BAAI/bge-reranker-v2-m3"
 )
 RERANKER_FETCH_K = 20       # Number of candidates to fetch before reranking
 

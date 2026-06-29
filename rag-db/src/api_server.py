@@ -1044,6 +1044,89 @@ def seed_ai_configs():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/rag/config/test", tags=["Config — AI配置管理"])
+def test_ai_config(request: dict):
+    """
+    用指定场景的当前配置测试 LLM 调用，返回模型原始输出。
+
+    对应 Java AiModelConfigController.testConfig(scene, testInput)。
+
+    请求体:
+        {
+            "scene": "triage",
+            "test_input": "头痛发热咳嗽"
+        }
+
+    响应:
+        {
+            "code": 200,
+            "data": {
+                "scene": "triage",
+                "model": "deepseek-v4-flash",
+                "raw_output": "模型原始输出文本",
+                "latency_ms": 1200,
+                "tokens": {...}
+            }
+        }
+    """
+    scene = request.get("scene", "").strip()
+    test_input = request.get("test_input", "").strip()
+
+    if not scene:
+        raise HTTPException(status_code=400, detail="scene 不能为空")
+    if not test_input:
+        raise HTTPException(status_code=400, detail="test_input 不能为空")
+
+    try:
+        from ai_config_loader import get_prompt, get_params
+        system_prompt = get_prompt(scene)
+        cfg = get_params(scene)
+        _temp = cfg.get("temperature", 0.3)
+        _max_tok = cfg.get("max_tokens", 800)
+        _model = cfg.get("model", "qwen-flash")
+
+        # Use the LLM client to test
+        from generation.deepseek_client import DeepSeekClient
+        client = DeepSeekClient(model=_model)
+
+        import time
+        start = time.time()
+
+        response = client.client.chat.completions.create(
+            model=_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": test_input},
+            ],
+            temperature=_temp,
+            max_tokens=_max_tok,
+        )
+
+        raw_output = response.choices[0].message.content
+        latency_ms = round((time.time() - start) * 1000, 1)
+
+        return {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "scene": scene,
+                "model": response.model,
+                "raw_output": raw_output,
+                "latency_ms": latency_ms,
+                "tokens": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                } if response.usage else None,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"配置测试失败: {str(e)}")
+
+
 # ============================================================
 # 用户反馈
 # ============================================================

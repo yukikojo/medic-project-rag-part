@@ -47,7 +47,7 @@ _load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."
 # Path configured via .env → RERANKER_MODEL_PATH
 RERANKER_MODEL_PATH = os.getenv(
     "RERANKER_MODEL_PATH",
-    r"D:\floder-for-claude\medic\bge-reranker-v2-m3"
+    r"BAAI/bge-reranker-v2-m3"
 )
 
 

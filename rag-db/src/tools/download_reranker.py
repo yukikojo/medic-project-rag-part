@@ -23,7 +23,7 @@ MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 # Download target — configured via .env → RERANKER_MODEL_PATH
 SAVE_PATH = os.getenv(
     "RERANKER_MODEL_PATH",
-    r"D:\floder-for-claude\medic\bge-reranker-v2-m3"
+    r"BAAI/bge-reranker-v2-m3"
 )
 
 
