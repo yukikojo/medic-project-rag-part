@@ -1,0 +1,58 @@
+# ============================================================
+# .dockerignore — 排除不需要打入镜像的文件
+# ============================================================
+
+# 敏感配置 (通过 docker-compose 环境变量注入)
+.env
+*.env
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 向量数据库数据 (通过 volume 挂载)
+medical_rag_db/
+*.chroma/
+
+# 模型文件 (~3.3GB, 通过 HF 自动下载或 volume 挂载)
+*.bin
+*.safetensors
+*.pth
+*.pt
+*.ckpt
+models/
+bge-m3/
+bge-reranker*/
+
+# 测试和数据
+rag-db/tests/
+rag-db/docs/
+rag data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# 临时文件
+*.log
+*.tmp
+feedback_log.jsonl
+
+# OS
+.DS_Store
+Thumbs.db

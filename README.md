@@ -8,6 +8,8 @@
 [![BGE-M3](https://img.shields.io/badge/embedding-BGE--M3-orange.svg)](https://huggingface.co/BAAI/bge-m3)
 [![BGE-Reranker](https://img.shields.io/badge/reranker-BGE--Reranker--v2--m3-red.svg)](https://huggingface.co/BAAI/bge-reranker-v2-m3)
 [![MySQL](https://img.shields.io/badge/source--of--truth-MySQL%208.0-blue.svg)](https://www.mysql.com/)
+[![Docker](https://img.shields.io/badge/docker-compose%20up%20--d-blue.svg)](https://www.docker.com/)
+[![GPU](https://img.shields.io/badge/GPU-CUDA%2012.4-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 
 ---
 
@@ -75,10 +77,10 @@
     ├── requirements.txt
     │
     ├── src/                        # Python AI 引擎源码
-│   ├── api_server.py             # FastAPI 网关 (20 个端点)
+│   ├── api_server.py             # FastAPI 网关 (25 个端点)
 │   ├── api_models.py             # Pydantic 请求/响应模型
 │   ├── ai_config_loader.py       # AI 模型配置 (MySQL + 60s 缓存)
-│   ├── config.py                 # 模型路径常量
+│   ├── config.py                 # 集中配置 (路径/模型/MySQL)
 │   │
 │   ├── retrieval/                # ① 查询优化 + ② 向量检索
 │   │   ├── query_optimizer.py    #   口语标准化, 紧急信号检测
@@ -92,6 +94,12 @@
 │   │
 │   ├── enrichment/               # ⑤ 知识图谱富化
 │   │   └── kg_enricher.py        #   MySQL 实时查询 231K 关系
+│   │
+│   ├── dialogue/                 # 多轮对话 Agent (新增)
+│   │   └── dialogue_manager.py   #   Agent-Skill 架构, B+C 决策逻辑
+│   │
+│   ├── advice_interpret/         # 医嘱解读 (新增)
+│   │   └── advice_interpreter.py #   医生建议 → 患者通俗语言
 │   │
 │   ├── emr/                      # 病历要素提取
 │   │   └── emr_extractor.py      #   症状→8 个结构化病历字段
@@ -120,10 +128,13 @@
 │   ├── full_pipeline_test.py     #   7 阶段端到端
 │   ├── benchmark_metrics.py      #   性能指标采集
 │   ├── health_summary/           #   健康摘要专用测试
-│   └── health_suggestion/        #   生活建议专用测试 (含 MySQL 写入)
+│   ├── health_suggestion/        #   生活建议专用测试 (含 MySQL 写入)
+│   ├── dialogue/                 #   多轮对话 Agent 测试 (新增)
+│   └── archived/                 #   已归档测试
 │
 ├── docs/                         # 文档
-│   ├── API_REFERENCE.md          #   20 个端点完整文档
+│   ├── API_REFERENCE.md          #   25 个端点完整文档
+│   ├── DIALOGUE_AGENT.md         #   多轮对话 Agent 设计文档
 │   ├── PERFORMANCE_METRICS.md    #   延迟/召回率/覆盖率报告
 │   ├── HEALTH_SUMMARY.md         #   健康摘要功能文档
 │   ├── HEALTH_SUGGESTION.md      #   生活建议功能文档
@@ -200,6 +211,92 @@ uvicorn rag-db.src.api_server:app --host 0.0.0.0 --port 8000 --workers 4
 # ReDoc:      http://localhost:8000/api/redoc
 ```
 
+### 3.6 Docker 部署 (推荐)
+
+一条命令完成 AI 引擎 + MySQL 的编排部署。
+
+**前置条件**：
+
+| 依赖 | 版本 | 说明 |
+|------|------|------|
+| Docker | 20.10+ | |
+| nvidia-container-toolkit | — | GPU 推理必需，CPU 模式可跳过 |
+| 可用磁盘 | ≥ 15GB | 含模型下载 ~3.3GB + 镜像 ~2GB + MySQL 数据 |
+
+**快速启动**：
+
+```bash
+# 1. 构建并启动 (首次需下载镜像 + 模型, 约 5-10 分钟)
+docker-compose up -d
+
+# 2. 查看启动日志
+docker-compose logs -f ai-engine
+
+# 3. 等待 MySQL healthy + 模型下载完成后, 初始化知识库
+curl -X POST http://localhost:8000/api/rag/knowledge/import-json
+curl -X POST http://localhost:8000/api/rag/knowledge/rebuild
+curl -X POST http://localhost:8000/api/rag/config/seed
+
+# 4. 验证
+curl http://localhost:8000/api/rag/health
+```
+
+**常用命令**：
+
+```bash
+docker-compose down              # 停止服务
+docker-compose up -d --build     # 重建镜像并启动
+docker-compose logs -f ai-engine # 查看 AI 引擎日志
+docker-compose logs -f mysql     # 查看 MySQL 日志
+docker-compose ps                # 查看服务状态
+```
+
+**环境变量** (通过 `.env` 文件或命令行传入)：
+
+```env
+# LLM API (必填 — 至少配置一组)
+DEEPSEEK_API_KEY=sk-xxx
+LLM_API_KEY=sk-xxx
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=qwen-flash
+
+# 模型路径 (留空则自动从 HuggingFace 下载)
+EMBEDDING_MODEL_PATH=BAAI/bge-m3
+RERANKER_MODEL_PATH=BAAI/bge-reranker-v2-m3
+
+# MySQL (Docker Compose 自动配置, 无需修改)
+MYSQL_HOST=mysql
+MYSQL_PASSWORD=medic123
+MYSQL_DATABASE=medical_rag
+```
+
+**模型下载说明**：
+
+| 模型 | 大小 | 下载源 | 缓存位置 |
+|------|------|--------|----------|
+| BGE-M3 | ~2.2GB | HuggingFace | `model_cache` volume |
+| BGE-Reranker-v2-m3 | ~1.1GB | HuggingFace | `model_cache` volume |
+
+首次启动时 `sentence-transformers` 自动从 HuggingFace 下载模型到容器内 `/app/data/models`，通过 `model_cache` volume 持久化。后续重启无需重新下载。
+
+若已有本地模型，设置 `EMBEDDING_MODEL_PATH` / `RERANKER_MODEL_PATH` 为容器内路径，并挂载 volume 即可。
+
+**端口映射**：
+
+| 服务 | 宿主机端口 | 容器端口 | 说明 |
+|------|----------|----------|------|
+| AI 引擎 | 8000 | 8000 | FastAPI HTTP |
+| MySQL | 3307 | 3306 | 避免与宿主机 MySQL 冲突 |
+
+**故障排查**：
+
+| 症状 | 原因 | 解决 |
+|------|------|------|
+| `could not select device driver "nvidia"` | 未安装 nvidia-container-toolkit | 安装后重启 Docker, 或在 `docker-compose.yml` 中注释 `deploy.resources` |
+| 启动后模型下载失败 | 网络不通或 HF 限流 | 设置 `HF_ENDPOINT=https://hf-mirror.com` 使用镜像站 |
+| MySQL 连接超时 | MySQL 未完成初始化 | 等待 `mysql` 容器 `healthy` 后再调用 AI 引擎 |
+| 端口 3307 冲突 | 宿主机已有 MySQL | 修改 `docker-compose.yml` 中 `ports: "3307:3306"` |
+
 ---
 
 ## 四、API 端点概览
@@ -227,7 +324,12 @@ uvicorn rag-db.src.api_server:app --host 0.0.0.0 --port 8000 --workers 4
 | 17 | GET | `/api/rag/config/list` | 列出所有 AI 场景 | <5ms |
 | 18 | GET | `/api/rag/config/{scene}` | 查询单个场景配置 | <5ms |
 | 19 | POST | `/api/rag/config/seed` | 写入默认配置 | <20ms |
-| 20 | POST | `/api/rag/feedback` | 用户反馈收集 | <5ms |
+| 20 | POST | `/api/rag/config/test` | 测试 Prompt 效果 | ~1-3s |
+| 21 | POST | `/api/rag/feedback` | 用户反馈收集 | <5ms |
+| 22 | POST | `/api/rag/dialogue/start` | 开始多轮对话 (Agent) | ~2-4s |
+| 23 | POST | `/api/rag/dialogue/continue` | 继续多轮对话 | ~2-4s |
+| 24 | GET | `/api/rag/dialogue/{session_id}` | 查询对话状态 | <20ms |
+| 25 | POST | `/api/rag/advice/interpret` | 医嘱解读 (医生→患者语言) | ~2-3s |
 
 ---
 
@@ -278,13 +380,14 @@ for cat in result["suggestions"]:
 
 | 组件 | 技术 | 说明 |
 |------|------|------|
-| API 框架 | FastAPI + Uvicorn | 20 个 REST 端点，自动生成 Swagger 文档 |
+| API 框架 | FastAPI + Uvicorn | 25 个 REST 端点，自动生成 Swagger 文档 |
 | 嵌入模型 | BGE-M3 | 1024 维，多语言，CUDA 推理 ~10ms |
 | 精排模型 | BGE-Reranker-v2-m3 | Cross-Encoder，sigmoid 归一化到 [0,1] |
 | 向量数据库 | ChromaDB | HNSW 索引，3 Collections，~100MB |
 | 关系数据库 | MySQL 8.0 | 知识库源数据 (medical_rag 库) |
 | LLM 网关 | OpenAI-compatible SDK | DeepSeek / Qwen-Flash |
 | 知识图谱 | OpenKG | 8,808 疾病 + 312,159 关系三元组 |
+| 部署 | Docker + docker-compose | GPU 支持 (CUDA 12.4)，MySQL 编排 |
 
 ---
 

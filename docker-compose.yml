@@ -1,0 +1,109 @@
+# ============================================================
+# RAG 智慧医疗 AI 引擎 + MySQL — Docker Compose 编排
+# ============================================================
+# 启动: docker-compose up -d
+# 查看: docker-compose logs -f ai-engine
+# 停止: docker-compose down
+# 重建: docker-compose up -d --build
+# ============================================================
+
+version: "3.8"
+
+services:
+  # ============================================================
+  # AI 引擎 — FastAPI (GPU)
+  # ============================================================
+  ai-engine:
+    build: .
+    image: medic-rag-engine:latest
+    container_name: medic-rag-engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # ---- LLM API (必填) ----
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com}
+      - LLM_MODEL=${LLM_MODEL:-qwen-flash}
+      # ---- 查询优化器 ----
+      - OPTIMIZER_API_KEY=${OPTIMIZER_API_KEY:-}
+      - OPTIMIZER_BASE_URL=${OPTIMIZER_BASE_URL:-https://api.deepseek.com}
+      - OPTIMIZER_MODEL=${OPTIMIZER_MODEL:-deepseek-v4-flash}
+      # ---- MySQL (连接到 compose 内的 mysql 服务) ----
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-medic123}
+      - MYSQL_DATABASE=medical_rag
+      # ---- 模型 (挂载本地模型可跳过下载, 否则 HF 自动下载) ----
+      - EMBEDDING_MODEL_PATH=${EMBEDDING_MODEL_PATH:-BAAI/bge-m3}
+      - RERANKER_MODEL_PATH=${RERANKER_MODEL_PATH:-BAAI/bge-reranker-v2-m3}
+      # ---- 存储 ----
+      - CHROMADB_PATH=/app/data/chromadb
+      - HF_HOME=/app/data/models
+      - DATA_PATH=/app/data/medical.json
+    volumes:
+      - chromadb_data:/app/data/chromadb
+      - model_cache:/app/data/models
+      - ./rag data/openkg data/medical.json:/app/data/medical.json:ro
+      # 本地模型挂载 (取消注释可跳过下载, 路径改成你自己的):
+      # - D:/floder-for-claude/medic/bge-m3:/app/models/bge-m3:ro
+      # - D:/floder-for-claude/medic/bge-reranker-v2-m3:/app/models/bge-reranker:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # GPU: 需要 nvidia-container-toolkit。如未安装，注释下面 4 行
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - medic-network
+
+  # ============================================================
+  # MySQL 8.0 — 知识库源数据
+  # ============================================================
+  mysql:
+    image: mysql:8.0
+    container_name: medic-mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306"   # 映射到 3307 避免和宿主机 MySQL 冲突
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD:-medic123}
+      - MYSQL_DATABASE=medical_rag
+      - MYSQL_CHARSET=utf8mb4
+      - MYSQL_COLLATION=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./rag-db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD:-medic123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - medic-network
+
+# ============================================================
+# Volumes
+# ============================================================
+volumes:
+  chromadb_data:
+    driver: local
+  model_cache:
+    driver: local
+  mysql_data:
+    driver: local
+
+# ============================================================
+# Network
+# ============================================================
+networks:
+  medic-network:
+    driver: bridge
