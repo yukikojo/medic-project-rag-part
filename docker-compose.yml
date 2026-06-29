@@ -53,14 +53,14 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    # GPU: 需要 nvidia-container-toolkit。如未安装，注释下面 4 行
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    # GPU: 需 nvidia-container-toolkit。有则取消下面注释
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
     networks:
       - medic-network
 
