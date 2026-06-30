@@ -73,6 +73,36 @@ app.add_middleware(
 # Global startup timestamp
 _START_TIME = time.time()
 
+
+# ============================================================
+# Startup: 预加载本地模型 (消除首次请求冷启动延迟)
+# ============================================================
+
+@app.on_event("startup")
+def _preload_models():
+    """启动时预加载 BGE-M3 + Reranker，避免首次 API 调用时等待 3-5s。"""
+    import threading
+
+    def _load():
+        print("[Startup] 预加载本地模型...")
+        t0 = time.time()
+        try:
+            vs = get_vector_store()
+            _ = vs.model       # BGE-M3 embedding (~2.2GB, ~3s)
+            t1 = time.time()
+            print(f"[Startup] BGE-M3 加载完成 ({t1 - t0:.1f}s)")
+
+            # 触发 Reranker 加载
+            vs._use_reranker = True
+            _ = vs.reranker    # BGE-Reranker-v2-m3 (~1.1GB, ~2s)
+            t2 = time.time()
+            print(f"[Startup] Reranker 加载完成 ({t2 - t1:.1f}s)")
+            print(f"[Startup] 模型预加载总计 {t2 - t0:.1f}s")
+        except Exception as e:
+            print(f"[Startup] 模型预加载失败 (将在首次请求时懒加载): {e}")
+
+    threading.Thread(target=_load, daemon=True).start()
+
 # Lazy-loaded singletons (initialized on first request)
 _pipeline = None
 _emr_processor = None

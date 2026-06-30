@@ -337,25 +337,27 @@ class DialogueManager:
                 "confidence": 0.95,
             }
 
-        # 3. Extract symptoms from this turn (LLM Skill)
-        extracted = self._extract_symptoms(patient_input)
-
-        # 4. Merge with accumulated symptoms
+        # 3. Load previous accumulated symptoms
         prev_symptoms = json.loads(
             session.get("collected_symptoms", "{}") or "{}"
         )
-        accumulated = self._merge_symptoms(prev_symptoms, extracted)
+        # Use previous RAG candidates for context (from last turn)
+        prev_candidates = json.loads(
+            session.get("candidate_diseases", "[]") or "[]"
+        )
 
-        # 5. RAG retrieval (VectorStore Skill)
-        candidates = self._retrieve_diseases(accumulated)
-
-        # 6. Decision: enough info? (Rule B + LLM Skill C)
-        decision = self._decide_sufficient_info(
-            accumulated_symptoms=accumulated,
-            candidate_diseases=candidates,
+        # 4. Merged LLM call: extract symptoms + decide in one API call
+        extracted, decision = self._extract_and_decide(
+            patient_input=patient_input,
+            prev_symptoms=prev_symptoms,
+            prev_candidates=prev_candidates,
             current_turn=current_turn,
             max_turns=max_turns,
         )
+
+        # 5. Merge & RAG retrieval
+        accumulated = self._merge_symptoms(prev_symptoms, extracted)
+        candidates = self._retrieve_diseases(accumulated)
 
         # 7. Generate output based on decision
         question = None
@@ -598,6 +600,125 @@ class DialogueManager:
             if self.verbose:
                 print(f"[Dialogue] RAG 检索失败: {e}")
             return []
+
+    def _extract_and_decide(
+        self,
+        patient_input: str,
+        prev_symptoms: dict,
+        prev_candidates: list,
+        current_turn: int,
+        max_turns: int,
+    ):
+        """
+        合并的症状提取 + 决策判断 (单次 LLM 调用)。
+
+        从患者输入中提取结构化症状，同时判断已有信息是否足够推荐。
+        Rule B 门槛仍在 LLM 之后应用。
+        """
+        # Format context for LLM
+        symptoms_text = self._format_symptoms_for_prompt(prev_symptoms)
+        diseases_text = self._format_diseases_for_prompt(prev_candidates, top_n=5)
+
+        # Load config
+        try:
+            from ai_config_loader import get_prompt, get_params
+            system_prompt = get_prompt("dialogue_decision")
+            cfg = get_params("dialogue_decision")
+            _temp = cfg["temperature"]
+            _max_tok = cfg["max_tokens"]
+            _model = cfg["model"]
+        except Exception:
+            system_prompt = DEFAULT_DECISION_PROMPT
+            _temp = 0.3
+            _max_tok = 600
+            _model = self.model or "deepseek-v4-flash"
+
+        system_prompt = system_prompt.replace(
+            "{accumulated_symptoms}", symptoms_text
+        ).replace("{candidate_diseases}", diseases_text).replace(
+            "{current_turn}", str(current_turn)
+        ).replace("{max_turns}", str(max_turns))
+
+        user_message = (
+            f"## 患者本轮描述\n{patient_input}\n\n"
+            f"## 历史累积症状\n{symptoms_text}\n\n"
+            f"## 候选疾病\n{diseases_text}\n\n"
+            f"请提取症状并判断是否可推荐（当前第{current_turn}/{max_turns}轮）。"
+        )
+
+        try:
+            response = self.llm_client.client.chat.completions.create(
+                model=_model or self.model or self.llm_client.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=_temp,
+                max_tokens=_max_tok,
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content.strip()
+            data = self._parse_llm_json(raw)
+        except Exception as e:
+            if self.verbose:
+                print(f"[Dialogue] extract+decide LLM 失败: {e}")
+            # Fallback: minimal extraction + continue
+            data = {
+                "symptoms": [patient_input[:30]],
+                "body_parts": [],
+                "duration": "",
+                "severity": "",
+                "keywords": [],
+                "decision": "continue",
+                "confidence": 30,
+                "reasoning": "LLM 不可用，fallback",
+                "key_symptoms_count": 0,
+            }
+
+        # Build extracted dict
+        extracted = {
+            "symptoms": data.get("symptoms", []),
+            "body_parts": data.get("body_parts", []),
+            "duration": data.get("duration", ""),
+            "severity": data.get("severity", ""),
+            "keywords": data.get("keywords", []),
+        }
+
+        # Count total unique symptoms (prev + new)
+        existing_symptoms = set(
+            s.lower() for s in prev_symptoms.get("symptoms", [])
+        )
+        new_count = sum(
+            1 for s in extracted["symptoms"]
+            if s.lower() not in existing_symptoms
+        )
+        total_count = len(existing_symptoms) + new_count
+        data["key_symptoms_count"] = total_count
+
+        # Rule B gates (applied AFTER LLM extraction)
+        if total_count < MIN_SYMPTOM_THRESHOLD and current_turn < max_turns:
+            decision = {
+                "decision": "continue",
+                "confidence": 30,
+                "reasoning": f"仅 {total_count} 个明确症状，需更多信息",
+                "key_symptoms_count": total_count,
+            }
+        elif current_turn >= max_turns:
+            decision = {
+                "decision": "recommend",
+                "confidence": 60,
+                "reasoning": "已达最大对话轮数",
+                "key_symptoms_count": total_count,
+            }
+        else:
+            decision = {
+                "decision": data.get("decision", "continue"),
+                "confidence": data.get("confidence", 50),
+                "reasoning": data.get("reasoning", ""),
+                "key_symptoms_count": total_count,
+            }
+
+        return extracted, decision
 
     def _decide_sufficient_info(
         self,

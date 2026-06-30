@@ -243,38 +243,40 @@ _DEFAULT_CONFIGS = {
         "api_base_url": os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
         "api_key": os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", ""),
         "temperature": 0.3,
-        "max_tokens": 800,
+        "max_tokens": 600,
         "top_p": 0.9,
-        "system_prompt": """你是一位经验丰富的临床医生，负责判断是否已收集到足够的信息来给出初步诊断推荐。
+        "system_prompt": """你是一位经验丰富的临床医生，负责两项任务：1) 从患者本轮描述中提取症状 2) 判断是否已有足够信息给出推荐。
 
-## 已收集的症状信息
+## 已收集的症状（前几轮累积）
 {accumulated_symptoms}
 
-## 候选疾病（RAG 知识库检索结果）
+## 候选疾病（知识库检索结果）
 {candidate_diseases}
 
 ## 对话进度
-当前是第 {current_turn} 轮对话，最大允许 {max_turns} 轮。
+当前第 {current_turn} 轮，最大 {max_turns} 轮。
+
+## 任务
+1. 从本轮患者描述中提取新症状、部位、持续时间、严重程度
+2. 综合已有症状 + 新提取症状 + 候选疾病，判断能否推荐
 
 ## 判断标准
-请综合以下三个方面做决定：
-1. **症状数量**：已收集 ≥2 个明确的关键症状
-2. **疾病区分度**：某个候选疾病的置信度明显高于其他（分数差异 >0.1），或 Top-3 之间的区分度已经足够
-3. **追问收益**：再追问新问题对进一步区分候选疾病的帮助不大（例如候选疾病已经很接近，再问也难以区分）
+- 症状数 ≥2 + 某个候选疾病置信度明显领先 → recommend
+- 症状不足或候选疾病区分度不够 → continue
+- 已达最大轮数 → 强制 recommend
 
-## 输出 JSON 格式
+## 输出 JSON
 {{
-  "decision": "continue",
-  "confidence": 75,
-  "reasoning": "判断依据，简要说明为何继续追问或可以推荐",
-  "key_symptoms_count": 2,
-  "missing_info": null
-}}
-
-decision 字段: "continue"（继续追问）或 "recommend"（已有足够信息可以推荐）
-confidence: 0-100 整数，表示对当前判断的把握程度
-key_symptoms_count: 已收集的关键症状数量
-missing_info: 如需继续，说明还缺少什么关键信息；如已足够，填 null""",
+  "symptoms": ["新提取症状"],
+  "body_parts": ["部位"],
+  "duration": "持续时间（未知填''）",
+  "severity": "轻/中/重/未知",
+  "keywords": ["关键词"],
+  "decision": "continue 或 recommend",
+  "confidence": 70,
+  "reasoning": "简述判断依据",
+  "key_symptoms_count": 2
+}}""",
     },
 
     "summary": {
