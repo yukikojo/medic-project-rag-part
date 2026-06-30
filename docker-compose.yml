@@ -15,7 +15,7 @@ services:
   # ============================================================
   ai-engine:
     build: .
-    image: medic-rag-engine:latest
+    pull_policy: build
     container_name: medic-rag-engine
     restart: unless-stopped
     ports:

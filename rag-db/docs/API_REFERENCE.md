@@ -1,24 +1,26 @@
 # RAG AI 引擎 — API 接口文档
 
 > **服务**: RAG 医疗智能导诊 AI 引擎 (FastAPI)  
-> **版本**: v2.0  
+> **版本**: v2.1  
 > **Base URL**: `http://{host}:8000`  
-> **日期**: 2026-06-27
+> **日期**: 2026-06-30
 
 ---
 
 ## 一、概览
 
-Python AI 引擎通过 FastAPI 对外暴露 **20 个 REST 端点**，是 Java Spring Boot 调用所有 AI 功能的唯一入口。十五个端点被划分为 5 个功能组：
+Python AI 引擎通过 FastAPI 对外暴露 **25 个 REST 端点**，是 Java Spring Boot 调用所有 AI 功能的唯一入口。端点按 7 个功能组划分：
 
 | 分组 | 标签 | 端点数 | 说明 |
 |------|------|--------|------|
 | System | `System` | 2 | 健康检查、用户反馈 |
 | Core | `Core — 智能导诊` | 4 | 智能导诊核心：科室推荐、症状分析、疾病检索、KG 增强 |
 | EMR | `EMR — 病历提取` | 2 | 病历要素提取、AI 辅助问诊 |
+| Dialogue | `Dialogue — 多轮对话` | 4 | 多轮对话 Agent：开始会话、继续追问、状态查询、关闭 |
 | Health | `Health — 健康档案` | 2 | 健康档案摘要、个性化生活建议 |
+| Advice | `Advice — 医嘱解读` | 1 | 医生建议 → 患者通俗语言 |
 | Knowledge | `Knowledge — 知识库同步` | 4 | MySQL↔ChromaDB 同步、数据导入、状态查询 |
-| Config | `Config — AI配置管理` | 4 | AI 模型配置的 CRUD、缓存刷新、seed |
+| Config | `Config — AI配置管理` | 5 | AI 模型配置 CRUD、缓存刷新、seed、Prompt 测试 |
 | Reference | `Reference — 参考数据` | 2 | 科室列表、科室详情 |
 
 统一响应格式：
@@ -448,7 +450,7 @@ MySQL vs ChromaDB 数据一致性检查。
 
 将硬编码默认配置写入 MySQL `ai_model_config` 表。
 
-**响应**: `{"code": 200, "message": "已写入 8 个场景配置", "data": {"seeded": 8}}`
+**响应**: `{"code": 200, "message": "已写入 10 个场景配置", "data": {"seeded": 10}}`
 
 - INSERT ... ON DUPLICATE KEY UPDATE — **幂等操作**，可重复调用
 
@@ -463,10 +465,10 @@ MySQL vs ChromaDB 数据一致性检查。
   "data": {
     "scenes": [
       { "scene": "triage", "model": "qwen-flash", "prompt_preview": "你是医疗分诊助手..." },
-      { "scene": "health_summary", "model": "qwen-flash", "prompt_preview": "你是资深全科医师..." }
+      { "scene": "summary", "model": "qwen-flash", "prompt_preview": "你是资深全科医师..." }
     ],
     "source": "mysql",
-    "total": 8
+    "total": 10
   }
 }
 ```
@@ -479,7 +481,7 @@ MySQL vs ChromaDB 数据一致性检查。
 
 获取完整配置（含完整 Prompt）。
 
-**路径参数**: `scene` = `triage` / `emr_extract` / `assist` / `health_summary` / `health_suggestion` / `chat` / `query_optimize` / `symptom_extract`
+**路径参数**: `scene` = `triage` / `emr_extract` / `assist` / `summary` / `health_profile` / `dialogue_followup` / `dialogue_decision` / `query_optimize` / `symptom_extract` / `advice_interpret`
 
 **响应**:
 ```json
@@ -507,9 +509,208 @@ MySQL vs ChromaDB 数据一致性检查。
 
 ---
 
-## 八、Reference — 参考数据
+### 7.5 POST /api/rag/config/test — 测试 Prompt 效果
 
-### 8.1 GET /api/rag/departments — 全部科室列表
+用指定场景的当前配置测试 LLM 调用，返回模型原始输出。对应 Java `AiModelConfigController.testConfig(scene, testInput)`。
+
+**请求**:
+```json
+{
+  "scene": "triage",
+  "test_input": "头痛发热咳嗽"
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "data": {
+    "scene": "triage",
+    "model": "qwen-flash",
+    "raw_output": "{\"department\": \"呼吸内科\", ...}",
+    "latency_ms": 1200,
+    "tokens": { "prompt_tokens": 450, "completion_tokens": 120, "total_tokens": 570 }
+  }
+}
+```
+
+---
+
+## 八、Dialogue — 多轮对话 Agent
+
+> 多轮对话 Agent 采用 Agent-Skill 架构，DialogueManager 编排对话循环，通过鉴别诊断追问收集症状，信息充足后给出科室推荐。
+
+### 8.1 POST /api/rag/dialogue/start — 开始新对话
+
+创建会话并返回首轮引导或追问。对应 Java `ConsultationController.startDialogue()`。
+
+**请求**:
+```json
+{
+  "patient_id": 1001,
+  "initial_symptom": "头痛三天了，右边太阳穴跳着疼",
+  "max_turns": 8
+}
+```
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| `patient_id` | int | 否 | — | 患者ID |
+| `initial_symptom` | str | 否 | — | 初始症状（传入则自动执行首轮分析） |
+| `max_turns` | int | 否 | 8 | 最大对话轮数 (3-20) |
+
+**响应**（含初始症状 → 首轮追问）:
+```json
+{
+  "code": 200,
+  "data": {
+    "action": "ask",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "current_turn": 1,
+    "question": "头痛时有没有伴随视力模糊或恶心？",
+    "candidate_diseases": [
+      { "disease": "偏头痛", "score": 0.746, "departments": "神经内科" }
+    ],
+    "collected_info": { "symptoms": ["头痛"], "duration": "3天" },
+    "confidence": 0.30
+  }
+}
+```
+
+**响应**（无初始症状 → 引导语）:
+```json
+{
+  "code": 200,
+  "data": {
+    "action": "ask",
+    "session_id": "a1b2c3d4-...",
+    "current_turn": 0,
+    "question": "您好，请问您有什么不舒服的症状？...",
+    "confidence": 0.0
+  }
+}
+```
+
+- `action`: `"ask"` (追问) / `"recommend"` (已出推荐) / `"emergency"` (紧急警告)
+- `session_id`: UUID v4 (36 字符)，后续调用需要传入
+
+---
+
+### 8.2 POST /api/rag/dialogue/continue — 继续对话
+
+提交患者回答，Agent 处理后返回下一步。对应 Java `ConsultationController.continueDialogue()`。
+
+**请求**:
+```json
+{
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "patient_input": "有时候会恶心，看到亮光的时候更疼"
+}
+```
+
+**响应**（继续追问）:
+```json
+{
+  "code": 200,
+  "data": {
+    "action": "ask",
+    "session_id": "a1b2c3d4-...",
+    "current_turn": 2,
+    "question": "头痛的频率大概是怎样的？",
+    "candidate_diseases": [...],
+    "collected_info": { "symptoms": ["头痛", "恶心", "畏光"] },
+    "confidence": 0.45
+  }
+}
+```
+
+**响应**（信息充足 → 推荐）:
+```json
+{
+  "code": 200,
+  "data": {
+    "action": "recommend",
+    "session_id": "a1b2c3d4-...",
+    "current_turn": 4,
+    "recommendation": {
+      "department": "神经内科",
+      "disease": "偏头痛（无先兆型）",
+      "confidence": 0.82,
+      "reasoning": "单侧搏动性头痛，伴恶心畏光...",
+      "suggestion": "建议记录头痛日记，避免强光刺激"
+    },
+    "confidence": 0.82
+  }
+}
+```
+
+**响应**（紧急）:
+```json
+{
+  "code": 200,
+  "data": {
+    "action": "emergency",
+    "emergency_warning": "⚠️ 检测到紧急症状：剧烈胸痛、呼吸困难。请立即就医！",
+    "candidate_diseases": [{ "disease": "急性心肌梗死", "score": 0.89 }],
+    "confidence": 0.95
+  }
+}
+```
+
+---
+
+### 8.3 GET /api/rag/dialogue/{session_id} — 查询会话状态
+
+**响应**: 完整会话数据，含 `dialogue_history`、`collected_symptoms`、`candidate_diseases`、`final_recommendation` 等。
+
+- 404: 会话不存在
+
+---
+
+### 8.4 POST /api/rag/dialogue/{session_id}/close — 手动关闭会话
+
+**响应**: `{"code": 200, "data": {"session_id": "...", "status": "closed"}}`
+
+---
+
+## 九、Advice — 医嘱解读
+
+### 9.1 POST /api/rag/advice/interpret — 医嘱解读
+
+将医生专业建议翻译为患者易懂语言。对应 Java `ConsultationServiceImpl.generateAdviceInterpretation()`。
+
+**请求**:
+```json
+{
+  "doctor_advice": "建议低盐低脂饮食，硝苯地平缓释片 30mg qd，每周监测血压",
+  "patient_context": "患者张三，男，65岁，高血压5年"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `doctor_advice` | str | ✅ | 医生原始建议文本 |
+| `patient_context` | str | 否 | 患者背景信息 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "data": {
+    "plain_explanation": "医生建议您...",
+    "key_points": ["低盐低脂饮食", "按时服药", "每周测血压"],
+    "medication_guide": "硝苯地平缓释片，每天一次...",
+    "follow_up_advice": "请按医生要求定期复诊，如有不适及时就医"
+  }
+}
+```
+
+---
+
+## 十、Reference — 参考数据
+
+### 10.1 GET /api/rag/departments — 全部科室列表
 
 **响应**:
 ```json
@@ -524,7 +725,7 @@ MySQL vs ChromaDB 数据一致性检查。
 
 ---
 
-### 8.2 GET /api/rag/department/{name} — 科室详情
+### 10.2 GET /api/rag/department/{name} — 科室详情
 
 **路径参数**: `name` = `呼吸内科`（URL encode）
 
@@ -532,7 +733,7 @@ MySQL vs ChromaDB 数据一致性检查。
 
 ---
 
-## 九、全部端点汇总
+## 十一、全部端点汇总
 
 | # | Method | Path | Tags | 延迟 |
 |---|--------|------|------|------|
@@ -555,11 +756,16 @@ MySQL vs ChromaDB 数据一致性检查。
 | 17 | GET | `/api/rag/config/list` | Config | <5ms |
 | 18 | GET | `/api/rag/config/{scene}` | Config | <5ms |
 | 19 | POST | `/api/rag/config/seed` | Config | <20ms |
-| 20 | POST | `/api/rag/feedback` | System | <5ms |
+| 20 | POST | `/api/rag/config/test` | Config | ~1-3s |
+| 21 | POST | `/api/rag/feedback` | System | <5ms |
+| 22 | POST | `/api/rag/dialogue/start` | Dialogue | ~2-4s |
+| 23 | POST | `/api/rag/dialogue/continue` | Dialogue | ~2-4s |
+| 24 | GET | `/api/rag/dialogue/{session_id}` | Dialogue | <20ms |
+| 25 | POST | `/api/rag/advice/interpret` | Advice | ~2-3s |
 
 ---
 
-## 十、Java 调用方式
+## 十二、Java 调用方式
 
 ```java
 // 1. 健康检查
@@ -589,11 +795,36 @@ Map<String, Object> suggestionRequest = Map.of(
 );
 Map suggestionResult = restTemplate.postForObject(
     "http://localhost:8000/api/rag/health-suggestion", suggestionRequest, Map.class);
+
+// 5. 多轮对话 Agent
+Map<String, Object> startReq = Map.of("patient_id", 1001, "initial_symptom", "头痛三天");
+Map startResp = restTemplate.postForObject(
+    "http://localhost:8000/api/rag/dialogue/start", startReq, Map.class);
+Map dialogueData = (Map) startResp.get("data");
+String sessionId = (String) dialogueData.get("session_id");
+
+// 患者回答后继续
+Map<String, Object> continueReq = Map.of("session_id", sessionId, "patient_input", "有恶心畏光");
+Map continueResp = restTemplate.postForObject(
+    "http://localhost:8000/api/rag/dialogue/continue", continueReq, Map.class);
+
+// 6. 医嘱解读 (advice_interpret 场景)
+Map<String, Object> adviceReq = Map.of(
+    "doctor_advice", "低盐低脂饮食，硝苯地平缓释片 30mg qd",
+    "patient_context", "患者张三，男，65岁，高血压5年"
+);
+Map adviceResp = restTemplate.postForObject(
+    "http://localhost:8000/api/rag/advice/interpret", adviceReq, Map.class);
+
+// 7. 测试 Prompt (管理员调优)
+Map<String, Object> testReq = Map.of("scene", "triage", "test_input", "头痛发热");
+Map testResp = restTemplate.postForObject(
+    "http://localhost:8000/api/rag/config/test", testReq, Map.class);
 ```
 
 ---
 
-## 十一、启动服务
+## 十三、启动服务
 
 ```bash
 # 开发模式 (热重载)

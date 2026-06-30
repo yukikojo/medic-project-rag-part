@@ -207,10 +207,10 @@ _DEFAULT_CONFIGS = {
 
     "dialogue_followup": {
         "scene": "dialogue_followup",
-        "model_name": os.getenv("LLM_MODEL", "qwen-flash"),
+        "model_name": "deepseek-v4-flash",
         "api_base_url": os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
         "api_key": os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", ""),
-        "temperature": 0.7,
+        "temperature": 0.5,
         "max_tokens": 1024,
         "top_p": 0.9,
         "system_prompt": """你是一位经验丰富的临床医生，擅长通过问诊进行鉴别诊断。你的任务是根据患者已描述的症状，以及知识库中的候选疾病特征，生成一个能最好地区分候选疾病的问题。
@@ -239,7 +239,7 @@ _DEFAULT_CONFIGS = {
 
     "dialogue_decision": {
         "scene": "dialogue_decision",
-        "model_name": os.getenv("LLM_MODEL", "qwen-flash"),
+        "model_name": "deepseek-v4-flash",
         "api_base_url": os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
         "api_key": os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", ""),
         "temperature": 0.3,

@@ -372,8 +372,13 @@ class DialogueManager:
                       f"{recommendation.get('disease', 'N/A')} "
                       f"(confidence: {recommendation.get('confidence', 0):.0%})")
         else:
+            # Load existing history so LLM knows what was already asked
+            session_history = json.loads(session.get("dialogue_history", "[]") or "[]")
+
             # Generate differential diagnosis question
-            q_result = self._generate_followup_question(accumulated, candidates)
+            q_result = self._generate_followup_question(
+                accumulated, candidates, session_history
+            )
             question = q_result.get("question",
                        "请详细描述您的症状，包括持续时间、严重程度和伴随症状。")
             question_reasoning = q_result.get("reasoning", "")
@@ -585,6 +590,7 @@ class DialogueManager:
                     "symptoms": r.get("symptoms", ""),
                     "desc": r.get("desc", "")[:200],
                     "chain": r.get("chain", ""),
+                    "category": r.get("category", ""),
                 }
                 for r in results
             ]
@@ -707,15 +713,26 @@ class DialogueManager:
         self,
         accumulated_symptoms: dict,
         candidate_diseases: list,
+        session_history: list = None,
     ) -> dict:
         """
         生成鉴别诊断追问 (Skill 4: LLM Followup — dialogue_followup scene)。
 
         策略 C: 针对 Top-3 候选疾病的区分性特征提问。
         """
+        if session_history is None:
+            session_history = []
+
         try:
             symptoms_text = self._format_symptoms_for_prompt(accumulated_symptoms)
             diseases_text = self._format_diseases_for_prompt(candidate_diseases)
+
+            # Build full dialogue context from history
+            dialogue_lines = []
+            for h in session_history[-12:]:  # Last 6 Q&A rounds
+                role = "患者" if h.get("role") == "patient" else "医生"
+                dialogue_lines.append(f"{role}: {h.get('content', '')}")
+            dialogue_text = "\n".join(dialogue_lines) if dialogue_lines else "（首轮问诊）"
 
             # Load config
             try:
@@ -731,16 +748,22 @@ class DialogueManager:
                 _max_tok = 1024
                 _model = self.model or "qwen-flash"
 
-            # Format placeholders
+            # Inject FULL dialogue + constraint into system_prompt
+            constraint = (
+                f"\n\n## 完整问诊记录（已问过的不许再问）\n{dialogue_text}\n\n"
+                f"## 核心规则\n"
+                f"1. 阅读上述问诊记录，找出患者还没明确回答的鉴别方向\n"
+                f"2. 如果某个方向已问过2次但患者无法回答，立刻换新方向\n"
+                f"3. 绝对禁止用不同措辞问已出现过的问题"
+            )
             system_prompt = system_prompt.replace(
                 "{accumulated_symptoms}", symptoms_text
-            ).replace("{candidate_diseases}", diseases_text)
+            ).replace("{candidate_diseases}", diseases_text) + constraint
 
             user_message = (
-                f"根据患者已描述的症状和知识库候选疾病，"
-                f"请生成一个最关键的鉴别诊断问题。\n\n"
-                f"已收集症状: {symptoms_text}\n\n"
-                f"候选疾病: {diseases_text}"
+                f"已收集症状: {symptoms_text}\n"
+                f"候选疾病: {diseases_text}\n\n"
+                f"请基于问诊记录，选一个还没问过的新方向生成下一个问题。"
             )
 
             response = self.llm_client.client.chat.completions.create(
